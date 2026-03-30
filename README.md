@@ -31,8 +31,18 @@ npm run dev
 
 - `GET /api/health`
 - `GET /api/media`
-- `POST /api/media` (form-data key: `files`, cho phep nhieu file)
+- `POST /api/media` (form-data key: `files`, `displayNames`, `uploaderName`)
 - `GET /api/file?id=<mediaId>` (tra file binary luu trong Mongo)
+- `GET /api/wishes` (lay danh sach loi chuc)
+- `POST /api/wishes` (gui loi chuc, body json: `senderName`, `content`)
+- `GET /api/wishes?senderName=<username>` (lay loi chuc cua 1 user)
+- `PUT /api/wishes?id=<wishId>` (sua loi chuc cua chinh user, body json: `senderName`, `content`)
+- `DELETE /api/wishes?id=<wishId>&senderName=<username>` (xoa loi chuc cua chinh user)
+- `DELETE /api/media?id=<mediaId>&uploaderName=<username>` (chi xoa file do chinh user upload)
+
+Rang buoc username (dang nhap / uploader / senderName):
+
+- Chi gom chu khong dau va viet lien (`a-z`, `A-Z`)
 
 Endpoint cu van giu de tuong thich nguoc:
 

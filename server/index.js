@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 
 import Media from "./models/Media.js";
+import Wish from "./models/Wish.js";
 
 dotenv.config();
 
@@ -137,14 +138,42 @@ const uploadMany = (req, res, next) => {
   upload.array("files", 20)(req, res, next);
 };
 
+const USERNAME_REGEX = /^[a-zA-Z]+$/;
+const parseUserName = (value) => String(value || "").trim().slice(0, 80);
+
+const parseDisplayNames = (rawValue) => {
+  if (!rawValue || typeof rawValue !== "string") {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((value) => String(value || "").trim());
+  } catch {
+    return [];
+  }
+};
+
 const toClientMedia = (doc) => ({
   id: String(doc._id),
   name: doc.originalName,
+  uploadedBy: doc.uploadedBy || "",
   type: doc.mediaType,
   src:
     doc.storageProvider === "mongo"
       ? `/api/file?id=${doc._id}`
       : doc.url,
+  createdAt: doc.createdAt,
+});
+
+const toClientWish = (doc) => ({
+  id: String(doc._id),
+  senderName: doc.senderName,
+  content: doc.content,
   createdAt: doc.createdAt,
 });
 
@@ -156,6 +185,171 @@ app.get("/api/media", async (_req, res, next) => {
   try {
     const mediaItems = await Media.find().sort({ createdAt: -1 }).lean();
     res.json({ items: mediaItems.map(toClientMedia) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/wishes", async (_req, res, next) => {
+  try {
+    const senderName = parseUserName(_req.query.senderName);
+    const query = {};
+
+    if (senderName) {
+      if (!USERNAME_REGEX.test(senderName)) {
+        res.status(400).json({ message: "Invalid sender name format" });
+        return;
+      }
+
+      query.senderName = senderName;
+    }
+
+    const items = await Wish.find(query)
+      .sort({ createdAt: -1 })
+      .limit(120)
+      .lean();
+    res.json({ items: items.map(toClientWish) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post("/api/wishes", async (req, res, next) => {
+  try {
+    const senderName = parseUserName(req.body?.senderName);
+    const content = String(req.body?.content || "").trim().slice(0, 500);
+
+    if (!senderName) {
+      res.status(400).json({ message: "Missing sender name" });
+      return;
+    }
+
+    if (!USERNAME_REGEX.test(senderName)) {
+      res.status(400).json({ message: "Invalid sender name format" });
+      return;
+    }
+
+    if (!content) {
+      res.status(400).json({ message: "Missing wish content" });
+      return;
+    }
+
+    const created = await Wish.create({ senderName, content });
+    res.status(201).json({ item: toClientWish(created) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.put("/api/wishes", async (req, res, next) => {
+  try {
+    const wishId = String(req.query.id || "").trim();
+    const senderName = parseUserName(req.body?.senderName);
+    const content = String(req.body?.content || "").trim().slice(0, 500);
+
+    if (!wishId || !mongoose.Types.ObjectId.isValid(wishId)) {
+      res.status(400).json({ message: "Missing or invalid wish id" });
+      return;
+    }
+
+    if (!senderName || !USERNAME_REGEX.test(senderName)) {
+      res.status(400).json({ message: "Missing or invalid sender name" });
+      return;
+    }
+
+    if (!content) {
+      res.status(400).json({ message: "Missing wish content" });
+      return;
+    }
+
+    const wish = await Wish.findById(wishId);
+    if (!wish) {
+      res.status(404).json({ message: "Wish not found" });
+      return;
+    }
+
+    if (wish.senderName !== senderName) {
+      res.status(403).json({ message: "You can only edit your own wishes" });
+      return;
+    }
+
+    wish.content = content;
+    await wish.save();
+    res.json({ item: toClientWish(wish) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/wishes", async (req, res, next) => {
+  try {
+    const wishId = String(req.query.id || "").trim();
+    const senderName = parseUserName(req.query.senderName);
+
+    if (!wishId || !mongoose.Types.ObjectId.isValid(wishId)) {
+      res.status(400).json({ message: "Missing or invalid wish id" });
+      return;
+    }
+
+    if (!senderName || !USERNAME_REGEX.test(senderName)) {
+      res.status(400).json({ message: "Missing or invalid sender name" });
+      return;
+    }
+
+    const wish = await Wish.findById(wishId);
+    if (!wish) {
+      res.status(404).json({ message: "Wish not found" });
+      return;
+    }
+
+    if (wish.senderName !== senderName) {
+      res.status(403).json({ message: "You can only delete your own wishes" });
+      return;
+    }
+
+    await wish.deleteOne();
+    res.json({ id: wishId, message: "Deleted" });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.delete("/api/media", async (req, res, next) => {
+  try {
+    const itemId = String(req.query.id || "").trim();
+    const requesterName = parseUserName(req.query.uploaderName);
+
+    if (!itemId) {
+      res.status(400).json({ message: "Missing media id" });
+      return;
+    }
+
+    if (!requesterName || !USERNAME_REGEX.test(requesterName)) {
+      res.status(400).json({ message: "Missing or invalid uploader name" });
+      return;
+    }
+
+    const item = await Media.findById(itemId);
+    if (!item) {
+      res.status(404).json({ message: "Media not found" });
+      return;
+    }
+
+    if (!item.uploadedBy || item.uploadedBy !== requesterName) {
+      res.status(403).json({ message: "You can only delete your own uploads" });
+      return;
+    }
+
+    if (item.storageProvider === "local") {
+      const safeFilename = path.basename(item.filename || "");
+      const localFilePath = path.join(uploadsDir, safeFilename);
+      if (safeFilename && fs.existsSync(localFilePath)) {
+        fs.unlinkSync(localFilePath);
+      }
+    }
+
+    await item.deleteOne();
+    res.json({ id: itemId, message: "Deleted" });
   } catch (error) {
     next(error);
   }
@@ -205,17 +399,29 @@ app.get("/api/file", async (req, res, next) => {
 const handleUploadMedia = async (req, res, next) => {
   try {
     const files = req.files || [];
+    const displayNames = parseDisplayNames(req.body?.displayNames);
+    const uploaderName = parseUserName(req.body?.uploaderName);
+
     if (files.length === 0) {
       res.status(400).json({ message: "No valid files uploaded" });
       return;
     }
 
-    const docs = files.map((file) => {
+    if (!uploaderName || !USERNAME_REGEX.test(uploaderName)) {
+      res.status(400).json({ message: "Missing or invalid uploader name" });
+      return;
+    }
+
+    const docs = files.map((file, index) => {
+      const customDisplayName = (displayNames[index] || "").slice(0, 120);
+      const mediaName = customDisplayName || file.originalname;
+
       if (isVercelRuntime) {
         const documentId = new mongoose.Types.ObjectId();
         return {
           _id: documentId,
-          originalName: file.originalname,
+          originalName: mediaName,
+          uploadedBy: uploaderName,
           filename: buildSafeFilename(file.originalname),
           url: `/api/file?id=${documentId}`,
           mimeType: file.mimetype,
@@ -227,7 +433,8 @@ const handleUploadMedia = async (req, res, next) => {
       }
 
       return {
-        originalName: file.originalname,
+        originalName: mediaName,
+        uploadedBy: uploaderName,
         filename: file.filename,
         url: `/api/uploads/${file.filename}`,
         mimeType: file.mimetype,

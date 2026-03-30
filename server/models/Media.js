@@ -7,6 +7,12 @@ const mediaSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    uploadedBy: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      match: /^[a-zA-Z]+$/,
+    },
     filename: {
       type: String,
       required: true,

@@ -10,6 +10,7 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE_URL}${path}`;
 const VISITOR_STORAGE_KEY = "dq-visitor-name";
+const GIFT_STEP_STORAGE_KEY = "dq-gift-step-complete";
 const USERNAME_PATTERN = /^[a-zA-Z]+$/;
 const GIFT_BOX_SRC = "/media/birthday_gift.png";
 const TROLL_MONKEY_SRC = "/media/troll_monkey.webp";
@@ -91,6 +92,8 @@ const DEFAULT_CREDIT_WISHES = [
   },
 ];
 
+const WISH_PAGE_SIZE = 3;
+
 const BASE_MEDIA = [
   {
     id: "img-1",
@@ -107,27 +110,8 @@ const BASE_MEDIA = [
   {
     id: "img-3",
     type: "image",
-    src: "/media/gallery_quang_fabulous.png",
-    name: "Quang fabulous",
-  },
-  {
-    id: "img-4",
-    type: "image",
-    src: "/media/gallery_squad_goals.png",
-    name: "Squad goals",
-  },
-  {
-    id: "img-5",
-    type: "image",
-    src: "/media/gallery_rainbow_cake.png",
-    name: "Rainbow cake",
-  },
-  { id: "img-6", type: "image", src: "/media/cake.jpg", name: "Cake icon" },
-  {
-    id: "img-7",
-    type: "image",
-    src: "/media/birthday_gift.png",
-    name: "Gift icon",
+    src: "/media/TayQuaVay.png",
+    name: "Quang Tay Bac",
   },
 ];
 
@@ -184,6 +168,7 @@ const getMediaTimestamp = (item) => {
 function App() {
   const canvasRef = useRef(null);
   const uploadInputRef = useRef(null);
+  const wishListRef = useRef(null);
   const burstsRef = useRef([]);
   const phraseQueueRef = useRef(0);
   const emojiTimerRef = useRef([]);
@@ -195,9 +180,13 @@ function App() {
   const [hasFinishedGiftStep, setHasFinishedGiftStep] = useState(false);
   const [autoFire, setAutoFire] = useState(false);
   const [wishes, setWishes] = useState([]);
+  const [communityWishes, setCommunityWishes] = useState([]);
   const [wishDraft, setWishDraft] = useState("");
   const [wishError, setWishError] = useState("");
   const [wishMessage, setWishMessage] = useState("");
+  const [wishSearch, setWishSearch] = useState("");
+  const [wishSort, setWishSort] = useState("latest");
+  const [wishPage, setWishPage] = useState(1);
   const [reactionStats, setReactionStats] = useState(INITIAL_REACTION_STATS);
   const [partyChallenge, setPartyChallenge] = useState(
     "Bam Quay challenge de nhan mot nhiem vu bua ngay.",
@@ -220,7 +209,7 @@ function App() {
   const [mediaSort, setMediaSort] = useState("latest");
   const [mediaSearch, setMediaSearch] = useState("");
   const [isCompactMedia, setIsCompactMedia] = useState(false);
-  const [activeImageIndex, setActiveImageIndex] = useState(-1);
+  const [activePreviewMediaId, setActivePreviewMediaId] = useState("");
 
   const allMedia = useMemo(
     () => [...BASE_MEDIA, ...serverMedia],
@@ -286,34 +275,97 @@ function App() {
     return filtered;
   }, [allMedia, mediaFilter, mediaSearch, mediaSort]);
 
-  const imageMedia = useMemo(
-    () => displayedMedia.filter((item) => item.type === "image"),
-    [displayedMedia],
+  const activePreviewIndex = displayedMedia.findIndex(
+    (item) => item.id === activePreviewMediaId,
   );
 
-  const activeImage =
-    activeImageIndex >= 0 && activeImageIndex < imageMedia.length
-      ? imageMedia[activeImageIndex]
-      : null;
+  const activePreviewMedia =
+    activePreviewIndex >= 0 ? displayedMedia[activePreviewIndex] : null;
 
-  const creditBaseWishes = useMemo(
-    () => [
+  const managedWishes = useMemo(() => {
+    const normalizedQuery = wishSearch.trim().toLowerCase();
+
+    const filtered = wishes.filter((item) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+
+      const content = String(item.content || "").toLowerCase();
+      return content.includes(normalizedQuery);
+    });
+
+    filtered.sort((a, b) => {
+      const timeA = Date.parse(a.createdAt || "") || 0;
+      const timeB = Date.parse(b.createdAt || "") || 0;
+
+      if (wishSort === "oldest") {
+        return timeA - timeB;
+      }
+
+      if (wishSort === "longest") {
+        return String(b.content || "").length - String(a.content || "").length;
+      }
+
+      if (wishSort === "shortest") {
+        return String(a.content || "").length - String(b.content || "").length;
+      }
+
+      return timeB - timeA;
+    });
+
+    return filtered;
+  }, [wishSearch, wishSort, wishes]);
+
+  const wishPageCount = useMemo(
+    () => Math.max(1, Math.ceil(managedWishes.length / WISH_PAGE_SIZE)),
+    [managedWishes.length],
+  );
+
+  const currentWishPage = Math.min(wishPage, wishPageCount);
+
+  const pagedWishes = useMemo(() => {
+    const startIndex = (currentWishPage - 1) * WISH_PAGE_SIZE;
+    return managedWishes.slice(startIndex, startIndex + WISH_PAGE_SIZE);
+  }, [currentWishPage, managedWishes]);
+
+  const wishRangeLabel = useMemo(() => {
+    if (managedWishes.length === 0) {
+      return "0/0";
+    }
+
+    const start = (currentWishPage - 1) * WISH_PAGE_SIZE + 1;
+    const end = Math.min(
+      currentWishPage * WISH_PAGE_SIZE,
+      managedWishes.length,
+    );
+    return `${start}-${end}/${managedWishes.length}`;
+  }, [currentWishPage, managedWishes.length]);
+
+  useEffect(() => {
+    if (wishListRef.current) {
+      wishListRef.current.scrollTop = 0;
+    }
+  }, [currentWishPage, wishSearch, wishSort]);
+
+  const creditBaseWishes = useMemo(() => {
+    const recentCommunityWishes = communityWishes.slice(0, 80);
+
+    return [
       ...DEFAULT_CREDIT_WISHES,
-      ...wishes.map((item) => ({
+      ...recentCommunityWishes.map((item) => ({
         id: item.id,
         content: item.content,
-        senderName: item.senderName || `@${visitorName}`,
+        senderName: item.senderName || "guest",
       })),
-    ],
-    [wishes, visitorName],
-  );
+    ];
+  }, [communityWishes]);
 
   const creditLoopWishes = useMemo(() => {
     if (creditBaseWishes.length === 0) {
       return [];
     }
 
-    const loopCount = 4;
+    const loopCount = 3;
     const expanded = [];
 
     for (let index = 0; index < loopCount; index += 1) {
@@ -328,10 +380,10 @@ function App() {
     return expanded;
   }, [creditBaseWishes]);
 
-  const creditAnimationDuration = useMemo(
-    () => `${Math.max(55, creditBaseWishes.length * 9)}s`,
-    [creditBaseWishes.length],
-  );
+  const creditAnimationDuration = useMemo(() => {
+    const computed = Math.max(50, creditBaseWishes.length * 6);
+    return `${Math.min(200, computed)}s`;
+  }, [creditBaseWishes.length]);
 
   useEffect(() => {
     try {
@@ -340,13 +392,33 @@ function App() {
         0,
         80,
       );
+      const hasCompletedGiftStep =
+        window.localStorage.getItem(GIFT_STEP_STORAGE_KEY) === "1";
+
       if (normalizedCachedName) {
         setVisitorDraftName(normalizedCachedName);
+        setVisitorName(normalizedCachedName);
+        setHasEnteredApp(true);
+
+        if (hasCompletedGiftStep) {
+          setHasOpenedGift(true);
+          setHasFinishedGiftStep(true);
+        }
       }
     } catch {
       // Ignore localStorage issues in restrictive browser modes.
     }
   }, []);
+
+  useEffect(() => {
+    setWishPage(1);
+  }, [wishSearch, wishSort]);
+
+  useEffect(() => {
+    if (wishPage > wishPageCount) {
+      setWishPage(wishPageCount);
+    }
+  }, [wishPage, wishPageCount]);
 
   useEffect(
     () => () => {
@@ -551,6 +623,25 @@ function App() {
     }
   }, [visitorName]);
 
+  const fetchCommunityWishes = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl("/api/wishes"));
+      if (!response.ok) {
+        throw new Error("Khong the tai credit loi chuc");
+      }
+
+      const data = await response.json();
+      setCommunityWishes(data.items || []);
+    } catch {
+      // Keep existing credit entries when all-user feed is temporarily unavailable.
+    }
+  }, []);
+
+  const refreshWishData = useCallback(() => {
+    fetchWishes();
+    fetchCommunityWishes();
+  }, [fetchCommunityWishes, fetchWishes]);
+
   useEffect(() => {
     if (!hasEnteredApp || !hasFinishedGiftStep) {
       return;
@@ -558,6 +649,14 @@ function App() {
 
     fetchWishes();
   }, [fetchWishes, hasEnteredApp, hasFinishedGiftStep]);
+
+  useEffect(() => {
+    if (!hasEnteredApp || !hasFinishedGiftStep) {
+      return;
+    }
+
+    fetchCommunityWishes();
+  }, [fetchCommunityWishes, hasEnteredApp, hasFinishedGiftStep]);
 
   const handleEnterApp = (event) => {
     event.preventDefault();
@@ -582,6 +681,7 @@ function App() {
 
     try {
       window.localStorage.setItem(VISITOR_STORAGE_KEY, trimmedName);
+      window.localStorage.removeItem(GIFT_STEP_STORAGE_KEY);
     } catch {
       // Ignore localStorage issues in restrictive browser modes.
     }
@@ -618,8 +718,10 @@ function App() {
       }
 
       setWishes((prev) => [data.item, ...prev]);
+      setCommunityWishes((prev) => [data.item, ...prev]);
       setWishDraft("");
       setWishMessage("Da gui loi chuc va them vao credit ben phai.");
+      setWishPage(1);
     } catch (error) {
       setWishError(error.message || "Khong the gui loi chuc");
     } finally {
@@ -742,6 +844,9 @@ function App() {
       setWishes((prev) =>
         prev.map((item) => (item.id === wishId ? data.item : item)),
       );
+      setCommunityWishes((prev) =>
+        prev.map((item) => (item.id === wishId ? data.item : item)),
+      );
       setWishMessage("Da cap nhat loi chuc.");
       handleCancelEditWish();
     } catch (error) {
@@ -779,6 +884,7 @@ function App() {
       }
 
       setWishes((prev) => prev.filter((item) => item.id !== wish.id));
+      setCommunityWishes((prev) => prev.filter((item) => item.id !== wish.id));
       if (editingWishId === wish.id) {
         handleCancelEditWish();
       }
@@ -926,8 +1032,8 @@ function App() {
 
       setServerMedia((prev) => prev.filter((item) => item.id !== mediaItem.id));
       setUploadMessage(`Da xoa ${mediaItem.name}`);
-      if (activeImage?.id === mediaItem.id) {
-        setActiveImageIndex(-1);
+      if (activePreviewMedia?.id === mediaItem.id) {
+        setActivePreviewMediaId("");
       }
     } catch (error) {
       setUploadError(error.message || "Khong the xoa media");
@@ -936,81 +1042,79 @@ function App() {
     }
   };
 
-  const openImagePreview = useCallback(
+  const openMediaPreview = useCallback(
     (mediaId) => {
-      const previewIndex = imageMedia.findIndex((item) => item.id === mediaId);
-      if (previewIndex !== -1) {
-        setActiveImageIndex(previewIndex);
+      const previewItem = displayedMedia.find((item) => item.id === mediaId);
+      if (previewItem) {
+        setActivePreviewMediaId(previewItem.id);
       }
     },
-    [imageMedia],
+    [displayedMedia],
   );
 
-  const closeImagePreview = useCallback(() => {
-    setActiveImageIndex(-1);
+  const closeMediaPreview = useCallback(() => {
+    setActivePreviewMediaId("");
   }, []);
 
-  const showNextImage = useCallback(() => {
-    setActiveImageIndex((prev) => {
-      if (imageMedia.length === 0) {
-        return -1;
-      }
-
-      if (prev < 0) {
-        return 0;
-      }
-
-      return (prev + 1) % imageMedia.length;
-    });
-  }, [imageMedia.length]);
-
-  const showPrevImage = useCallback(() => {
-    setActiveImageIndex((prev) => {
-      if (imageMedia.length === 0) {
-        return -1;
-      }
-
-      if (prev < 0) {
-        return 0;
-      }
-
-      return (prev - 1 + imageMedia.length) % imageMedia.length;
-    });
-  }, [imageMedia.length]);
-
-  useEffect(() => {
-    if (activeImageIndex < 0) {
+  const showNextMedia = useCallback(() => {
+    if (displayedMedia.length === 0) {
+      setActivePreviewMediaId("");
       return;
     }
 
-    if (imageMedia.length === 0) {
-      setActiveImageIndex(-1);
+    if (activePreviewIndex === -1) {
+      setActivePreviewMediaId(displayedMedia[0].id);
       return;
     }
 
-    if (activeImageIndex >= imageMedia.length) {
-      setActiveImageIndex(imageMedia.length - 1);
+    const nextIndex = (activePreviewIndex + 1) % displayedMedia.length;
+    setActivePreviewMediaId(displayedMedia[nextIndex].id);
+  }, [activePreviewIndex, displayedMedia]);
+
+  const showPrevMedia = useCallback(() => {
+    if (displayedMedia.length === 0) {
+      setActivePreviewMediaId("");
+      return;
     }
-  }, [activeImageIndex, imageMedia.length]);
+
+    if (activePreviewIndex === -1) {
+      setActivePreviewMediaId(displayedMedia[0].id);
+      return;
+    }
+
+    const prevIndex =
+      (activePreviewIndex - 1 + displayedMedia.length) % displayedMedia.length;
+    setActivePreviewMediaId(displayedMedia[prevIndex].id);
+  }, [activePreviewIndex, displayedMedia]);
 
   useEffect(() => {
-    if (!activeImage) {
+    if (!activePreviewMediaId) {
+      return;
+    }
+
+    if (!activePreviewMedia) {
+      setActivePreviewMediaId("");
+    }
+  }, [activePreviewMedia, activePreviewMediaId]);
+
+  useEffect(() => {
+    if (!activePreviewMedia) {
       return undefined;
     }
 
     const handleKeydown = (event) => {
       if (event.key === "Escape") {
-        closeImagePreview();
+        closeMediaPreview();
         return;
       }
 
       if (event.key === "ArrowRight") {
-        showNextImage();
+        showNextMedia();
         return;
       }
 
       if (event.key === "ArrowLeft") {
-        showPrevImage();
+        showPrevMedia();
       }
     };
 
@@ -1022,7 +1126,7 @@ function App() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", handleKeydown);
     };
-  }, [activeImage, closeImagePreview, showNextImage, showPrevImage]);
+  }, [activePreviewMedia, closeMediaPreview, showNextMedia, showPrevMedia]);
 
   const handleFireZoneClick = (event) => {
     launchBurst(event.clientX, event.clientY, 3);
@@ -1047,7 +1151,14 @@ function App() {
   };
 
   const handleContinueAfterGift = () => {
+    setHasOpenedGift(true);
     setHasFinishedGiftStep(true);
+
+    try {
+      window.localStorage.setItem(GIFT_STEP_STORAGE_KEY, "1");
+    } catch {
+      // Ignore localStorage issues in restrictive browser modes.
+    }
   };
 
   if (!hasEnteredApp) {
@@ -1170,7 +1281,7 @@ function App() {
 
       <header className="hero-card">
         <p className="eyebrow">Birthday roast mode</p>
-        <h1>Chuc mung sinh nhat Quang gay</h1>
+        <h1>Chuc mung sinh nhat Quang gay go</h1>
         <p className="lead">
           Chuc Quang tuoi moi luon vui, luon chat, tiec tung bung va ghi lai
           that nhieu khoanh khac dep de khoe voi hoi ban than.
@@ -1277,140 +1388,220 @@ function App() {
               </p>
             </div>
 
-            <div className="wish-presets">
-              {WISH_TEMPLATES.map((template) => (
-                <button
-                  key={template}
-                  type="button"
-                  className="wish-chip"
-                  onClick={() => appendWishTemplate(template)}
-                  disabled={isSendingWish}
-                >
-                  {template}
-                </button>
-              ))}
+            <div className="wish-system-grid">
+              <div className="wish-module wish-compose-module">
+                <div className="wish-module-head">
+                  <h3>Composer</h3>
+                  <span>Tao loi chuc</span>
+                </div>
 
-              <button
-                type="button"
-                className="wish-chip random"
-                onClick={applyRandomWish}
-                disabled={isSendingWish}
-              >
-                Random bua
-              </button>
-            </div>
+                <div className="wish-presets">
+                  {WISH_TEMPLATES.map((template) => (
+                    <button
+                      key={template}
+                      type="button"
+                      className="wish-chip"
+                      onClick={() => appendWishTemplate(template)}
+                      disabled={isSendingWish}
+                    >
+                      {template}
+                    </button>
+                  ))}
 
-            <form className="wish-form" onSubmit={handleSendWish}>
-              <textarea
-                value={wishDraft}
-                onChange={(event) => setWishDraft(event.target.value)}
-                maxLength={500}
-                placeholder="Viet loi chuc cua ban..."
-                disabled={isSendingWish}
-              />
-              <div className="wish-form-actions">
-                <button
-                  type="submit"
-                  className="btn primary"
-                  disabled={isSendingWish}
-                >
-                  {isSendingWish ? "Dang gui..." : "Gui loi chuc"}
-                </button>
-                <button
-                  type="button"
-                  className="btn"
-                  onClick={fetchWishes}
-                  disabled={isLoadingWishes || isSendingWish}
-                >
-                  {isLoadingWishes ? "Dang tai..." : "Tai lai loi chuc"}
-                </button>
+                  <button
+                    type="button"
+                    className="wish-chip random"
+                    onClick={applyRandomWish}
+                    disabled={isSendingWish}
+                  >
+                    Random bua
+                  </button>
+                </div>
+
+                <form className="wish-form" onSubmit={handleSendWish}>
+                  <textarea
+                    value={wishDraft}
+                    onChange={(event) => setWishDraft(event.target.value)}
+                    maxLength={500}
+                    placeholder="Viet loi chuc cua ban..."
+                    disabled={isSendingWish}
+                  />
+                  <div className="wish-form-actions">
+                    <button
+                      type="submit"
+                      className="btn primary"
+                      disabled={isSendingWish}
+                    >
+                      {isSendingWish ? "Dang gui..." : "Gui loi chuc"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={refreshWishData}
+                      disabled={isLoadingWishes || isSendingWish}
+                    >
+                      {isLoadingWishes ? "Dang tai..." : "Tai lai loi chuc"}
+                    </button>
+                  </div>
+                </form>
+
+                {wishMessage ? (
+                  <p className="upload-status">{wishMessage}</p>
+                ) : null}
+                {wishError ? (
+                  <p className="upload-status error">{wishError}</p>
+                ) : null}
               </div>
-            </form>
 
-            {wishMessage ? (
-              <p className="upload-status">{wishMessage}</p>
-            ) : null}
-            {wishError ? (
-              <p className="upload-status error">{wishError}</p>
-            ) : null}
+              <div className="wish-module wish-manager-module">
+                <div className="wish-module-head">
+                  <h3>Manager</h3>
+                  <span>Search - Sort - Page</span>
+                </div>
 
-            <div className="wish-list">
-              {wishes.length === 0 && !isLoadingWishes ? (
-                <p className="wish-empty">Ban chua gui loi chuc nao.</p>
-              ) : null}
+                <div className="wish-manager-toolbar">
+                  <input
+                    type="search"
+                    className="wish-search-input"
+                    placeholder="Tim noi dung loi chuc..."
+                    value={wishSearch}
+                    onChange={(event) => setWishSearch(event.target.value)}
+                  />
 
-              {wishes.map((item) => {
-                const isEditing = editingWishId === item.id;
-                const isUpdating = updatingWishIds.includes(item.id);
-                const isDeleting = deletingWishIds.includes(item.id);
+                  <select
+                    className="wish-sort-select"
+                    value={wishSort}
+                    onChange={(event) => setWishSort(event.target.value)}
+                  >
+                    <option value="latest">Moi nhat</option>
+                    <option value="oldest">Cu nhat</option>
+                    <option value="longest">Dai nhat</option>
+                    <option value="shortest">Ngan nhat</option>
+                  </select>
+                </div>
 
-                return (
-                  <article key={item.id} className="wish-item">
-                    {isEditing ? (
-                      <>
-                        <textarea
-                          className="wish-edit-input"
-                          value={editingWishDraft}
-                          onChange={(event) =>
-                            setEditingWishDraft(event.target.value)
-                          }
-                          maxLength={500}
-                          disabled={isUpdating}
-                        />
-                        <div className="wish-item-actions">
-                          <button
-                            type="button"
-                            className="btn primary"
-                            onClick={() => handleSaveWishEdit(item.id)}
-                            disabled={isUpdating}
-                          >
-                            {isUpdating ? "Dang luu..." : "Luu"}
-                          </button>
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={handleCancelEditWish}
-                            disabled={isUpdating}
-                          >
-                            Huy
-                          </button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p>{item.content}</p>
-                        <p className="wish-meta">
-                          {formatWishDate(item.createdAt)}
-                        </p>
-                        <div className="wish-item-actions">
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={() => handleStartEditWish(item)}
-                            disabled={isDeleting}
-                          >
-                            Sua
-                          </button>
-                          <button
-                            type="button"
-                            className="btn wish-danger"
-                            onClick={() => handleDeleteWish(item)}
-                            disabled={isDeleting}
-                          >
-                            {isDeleting ? "Dang xoa..." : "Xoa"}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </article>
-                );
-              })}
+                <div className="wish-list-shell">
+                  <div className="wish-list-head">
+                    <strong>Loi chuc cua ban</strong>
+                    <span>{wishRangeLabel}</span>
+                  </div>
+
+                  <div className="wish-list" ref={wishListRef}>
+                    {managedWishes.length === 0 && !isLoadingWishes ? (
+                      <p className="wish-empty">
+                        {wishSearch.trim()
+                          ? "Khong tim thay loi chuc phu hop voi tu khoa nay."
+                          : "Ban chua gui loi chuc nao."}
+                      </p>
+                    ) : null}
+
+                    {pagedWishes.map((item) => {
+                      const isEditing = editingWishId === item.id;
+                      const isUpdating = updatingWishIds.includes(item.id);
+                      const isDeleting = deletingWishIds.includes(item.id);
+
+                      return (
+                        <article key={item.id} className="wish-item">
+                          {isEditing ? (
+                            <>
+                              <textarea
+                                className="wish-edit-input"
+                                value={editingWishDraft}
+                                onChange={(event) =>
+                                  setEditingWishDraft(event.target.value)
+                                }
+                                maxLength={500}
+                                disabled={isUpdating}
+                              />
+                              <div className="wish-item-actions">
+                                <button
+                                  type="button"
+                                  className="btn primary"
+                                  onClick={() => handleSaveWishEdit(item.id)}
+                                  disabled={isUpdating}
+                                >
+                                  {isUpdating ? "Dang luu..." : "Luu"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={handleCancelEditWish}
+                                  disabled={isUpdating}
+                                >
+                                  Huy
+                                </button>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <p
+                                className="wish-content-text"
+                                title={item.content}
+                              >
+                                {item.content}
+                              </p>
+                              <p className="wish-meta">
+                                {formatWishDate(item.createdAt)}
+                              </p>
+                              <div className="wish-item-actions">
+                                <button
+                                  type="button"
+                                  className="btn"
+                                  onClick={() => handleStartEditWish(item)}
+                                  disabled={isDeleting}
+                                >
+                                  Sua
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn wish-danger"
+                                  onClick={() => handleDeleteWish(item)}
+                                  disabled={isDeleting}
+                                >
+                                  {isDeleting ? "Dang xoa..." : "Xoa"}
+                                </button>
+                              </div>
+                            </>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="wish-pagination">
+                    <button
+                      type="button"
+                      className="btn wish-page-btn"
+                      onClick={() =>
+                        setWishPage((prev) => Math.max(1, prev - 1))
+                      }
+                      disabled={currentWishPage === 1}
+                    >
+                      Truoc
+                    </button>
+                    <p>
+                      Trang {currentWishPage}/{wishPageCount} • {wishes.length}{" "}
+                      tong
+                    </p>
+                    <button
+                      type="button"
+                      className="btn wish-page-btn"
+                      onClick={() =>
+                        setWishPage((prev) => Math.min(wishPageCount, prev + 1))
+                      }
+                      disabled={currentWishPage === wishPageCount}
+                    >
+                      Sau
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-
-          <aside className="wish-credits">
-            <p className="wish-credits-title">
-              Credit loi chuc cua @{visitorName}
+          <aside className="wish-credits" style={{ marginTop: 70 }}>
+            <p className="wish-credits-title">Credit loi chuc cong dong</p>
+            <p className="wish-credits-meta">
+              {communityWishes.length} loi chuc tu moi nguoi
             </p>
             <div className="wish-credits-window">
               <div
@@ -1434,7 +1625,7 @@ function App() {
 
       <section className="panel media-panel">
         <div className="media-header">
-          <div>
+          <div className="media-intro">
             <h2>Album cua Quang</h2>
             <p className="media-guide">
               Bao Nhiêu Hoa Anh Chỉ Chọn Một Cành Bao Nhiêu Người Anh Chỉ Chọn
@@ -1445,11 +1636,14 @@ function App() {
               href="https://www.facebook.com/photo?fbid=1062066317902870&set=a.115345732574938"
               target="_blank"
               rel="noopener noreferrer"
+              className="media-intro-link"
             >
               nữ hoàng băng giá đụng đâu cứng đó
             </a>
           </div>
+        </div>
 
+        <div className="media-upload-zone">
           <div className="upload-actions">
             <label
               htmlFor="media-upload"
@@ -1502,15 +1696,15 @@ function App() {
                 <small>Dong bo tu server</small>
               </span>
             </button>
-
-            <p
-              className={`upload-selection ${pendingUploads.length === 0 ? "muted" : ""}`}
-            >
-              {pendingUploads.length > 0
-                ? `Buoc 2: Dat ten cho ${pendingUploads.length} file ben duoi.`
-                : "Chua co file nao duoc chon."}
-            </p>
           </div>
+
+          <p
+            className={`upload-selection ${pendingUploads.length === 0 ? "muted" : ""}`}
+          >
+            {pendingUploads.length > 0
+              ? `Buoc 2: Dat ten cho ${pendingUploads.length} file ben duoi.`
+              : "Chua co file nao duoc chon."}
+          </p>
         </div>
 
         {uploadMessage ? (
@@ -1534,9 +1728,12 @@ function App() {
               </button>
             </div>
 
-            {pendingUploads.map((item) => (
+            {pendingUploads.map((item, index) => (
               <div key={item.id} className="draft-item">
-                <span>{item.file.name}</span>
+                <div className="draft-origin">
+                  <span className="draft-index">{index + 1}</span>
+                  <span title={item.file.name}>{item.file.name}</span>
+                </div>
                 <div className="draft-item-editor">
                   <input
                     type="text"
@@ -1637,90 +1834,95 @@ function App() {
             <small>Thu doi bo loc hoac tim kiem keyword khac.</small>
           </div>
         ) : (
-          <div className={`media-grid ${isCompactMedia ? "compact" : ""}`}>
-            {displayedMedia.map((item) => {
-              const isDeleting = deletingMediaIds.includes(item.id);
-              const isOwnUpload =
-                Boolean(item.uploadedBy) && item.uploadedBy === visitorName;
+          <div className="media-grid-shell">
+            <div className={`media-grid ${isCompactMedia ? "compact" : ""}`}>
+              {displayedMedia.map((item) => {
+                const isDeleting = deletingMediaIds.includes(item.id);
+                const isOwnUpload =
+                  Boolean(item.uploadedBy) && item.uploadedBy === visitorName;
 
-              return (
-                <figure
-                  key={item.id}
-                  className={`media-card ${item.type === "image" ? "previewable" : ""} ${isOwnUpload ? "deletable" : ""}`}
-                >
-                  {isOwnUpload ? (
-                    <button
-                      type="button"
-                      className="media-card-delete"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleDeleteUploadedMedia(item);
-                      }}
-                      disabled={isDeleting}
-                    >
-                      {isDeleting ? "Dang xoa" : "Xoa"}
-                    </button>
-                  ) : null}
+                return (
+                  <figure
+                    key={item.id}
+                    className={`media-card previewable ${isOwnUpload ? "deletable" : ""}`}
+                  >
+                    {isOwnUpload ? (
+                      <button
+                        type="button"
+                        className="media-card-delete"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteUploadedMedia(item);
+                        }}
+                        disabled={isDeleting}
+                      >
+                        {isDeleting ? "Dang xoa" : "Xoa"}
+                      </button>
+                    ) : null}
 
-                  {item.type === "image" ? (
                     <button
                       type="button"
                       className="preview-trigger"
-                      onClick={() => openImagePreview(item.id)}
-                      aria-label={`Xem anh ${item.name}`}
+                      onClick={() => openMediaPreview(item.id)}
+                      aria-label={`Xem ${item.type === "video" ? "video" : "anh"} ${item.name}`}
                     >
-                      <img src={item.src} alt={item.name} loading="lazy" />
+                      {item.type === "video" ? (
+                        <>
+                          <video
+                            src={item.src}
+                            muted
+                            playsInline
+                            preload="metadata"
+                          />
+                          <span className="media-video-badge">Xem video</span>
+                        </>
+                      ) : (
+                        <img src={item.src} alt={item.name} loading="lazy" />
+                      )}
                     </button>
-                  ) : (
-                    <video
-                      src={item.src}
-                      controls
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  )}
-                  <figcaption>
-                    <span>{item.name}</span>
-                    <small>
-                      {item.type === "video" ? "Video" : "Anh"}
-                      {item.uploadedBy ? ` • by @${item.uploadedBy}` : ""}
-                    </small>
-                  </figcaption>
-                </figure>
-              );
-            })}
+
+                    <figcaption>
+                      <span>{item.name}</span>
+                      <small>
+                        {item.type === "video" ? "Video" : "Anh"}
+                        {item.uploadedBy ? ` • by @${item.uploadedBy}` : ""}
+                      </small>
+                    </figcaption>
+                  </figure>
+                );
+              })}
+            </div>
           </div>
         )}
       </section>
 
-      {activeImage ? (
+      {activePreviewMedia ? (
         <div
           className="media-lightbox"
           role="dialog"
           aria-modal="true"
-          aria-label={`Dang xem anh ${activeImage.name}`}
-          onClick={closeImagePreview}
+          aria-label={`Dang xem ${activePreviewMedia.type === "video" ? "video" : "anh"} ${activePreviewMedia.name}`}
+          onClick={closeMediaPreview}
         >
           <button
             type="button"
             className="lightbox-close"
-            onClick={closeImagePreview}
-            aria-label="Dong xem anh"
+            onClick={closeMediaPreview}
+            aria-label="Dong xem media"
           >
             Dong
           </button>
 
-          {imageMedia.length > 1 ? (
+          {displayedMedia.length > 1 ? (
             <>
               <button
                 type="button"
                 className="lightbox-nav prev"
                 onClick={(event) => {
                   event.stopPropagation();
-                  showPrevImage();
+                  showPrevMedia();
                 }}
-                aria-label="Anh truoc"
+                aria-label="Media truoc"
               >
                 {"<"}
               </button>
@@ -1729,9 +1931,9 @@ function App() {
                 className="lightbox-nav next"
                 onClick={(event) => {
                   event.stopPropagation();
-                  showNextImage();
+                  showNextMedia();
                 }}
-                aria-label="Anh tiep theo"
+                aria-label="Media tiep theo"
               >
                 {">"}
               </button>
@@ -1742,11 +1944,21 @@ function App() {
             className="lightbox-figure"
             onClick={(event) => event.stopPropagation()}
           >
-            <img src={activeImage.src} alt={activeImage.name} />
+            {activePreviewMedia.type === "video" ? (
+              <video
+                src={activePreviewMedia.src}
+                controls
+                autoPlay
+                playsInline
+                preload="metadata"
+              />
+            ) : (
+              <img src={activePreviewMedia.src} alt={activePreviewMedia.name} />
+            )}
             <figcaption>
-              <span>{activeImage.name}</span>
+              <span>{activePreviewMedia.name}</span>
               <span>
-                {activeImageIndex + 1}/{imageMedia.length}
+                {activePreviewIndex + 1}/{displayedMedia.length}
               </span>
             </figcaption>
           </figure>

@@ -53,10 +53,27 @@ const allowedOrigins = (process.env.CLIENT_ORIGIN || "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+const isAllowedOrigin = (origin) => {
+  if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes("*")) {
+    return true;
+  }
+
+  if (allowedOrigins.includes(origin)) {
+    return true;
+  }
+
+  // Allow Vercel preview/prod domains by default when running on Vercel.
+  if (isVercelRuntime) {
+    return /\.vercel\.app$/i.test(origin);
+  }
+
+  return false;
+};
+
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      if (isAllowedOrigin(origin)) {
         callback(null, true);
         return;
       }
@@ -203,6 +220,11 @@ app.post("/api/media/upload", uploadMany, async (req, res, next) => {
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
     res.status(400).json({ message: error.message });
+    return;
+  }
+
+  if (error.message === "CORS blocked origin") {
+    res.status(403).json({ message: error.message });
     return;
   }
 

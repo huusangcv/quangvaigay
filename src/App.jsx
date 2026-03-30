@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./App.css";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
+const shouldIgnoreLocalhostApiBase =
+  import.meta.env.PROD && /^https?:\/\/localhost(?::\d+)?$/i.test(RAW_API_BASE_URL);
+const API_BASE_URL = (shouldIgnoreLocalhostApiBase ? "" : RAW_API_BASE_URL).replace(
   /\/$/,
   "",
 );

@@ -31,6 +31,34 @@ const FIREWORK_COLORS = [
   "#b8a2cd",
 ];
 
+const DEFAULT_CREDIT_WISHES = [
+  {
+    id: "credit-1",
+    content: "Gay king Dang Quang xuat hien la bua tiec sang len.",
+    senderName: "Fan club",
+  },
+  {
+    id: "credit-2",
+    content: "Chuc Dang Quang luon ruc ro, tu tin va day nang luong dep.",
+    senderName: "Hoi ban than",
+  },
+  {
+    id: "credit-3",
+    content: "Happy birthday gay king, chuc moi ngay deu la runway cua ban.",
+    senderName: "Party crew",
+  },
+  {
+    id: "credit-4",
+    content: "Dang Quang la main character cua dem nay, khong can ban cai.",
+    senderName: "The audience",
+  },
+  {
+    id: "credit-5",
+    content: "Chuc gay king Dang Quang tuoi moi cuoi that tuoi va no tung bung.",
+    senderName: "The universe",
+  },
+];
+
 const BASE_MEDIA = [
   {
     id: "img-1",
@@ -162,15 +190,41 @@ function App() {
       ? imageMedia[activeImageIndex]
       : null;
 
-  const creditLoopWishes = useMemo(
-    () => {
-      if (wishes.length <= 1) {
-        return wishes;
-      }
+  const creditBaseWishes = useMemo(
+    () => [
+      ...DEFAULT_CREDIT_WISHES,
+      ...wishes.map((item) => ({
+        id: item.id,
+        content: item.content,
+        senderName: item.senderName || `@${visitorName}`,
+      })),
+    ],
+    [wishes, visitorName],
+  );
 
-      return [...wishes, ...wishes];
-    },
-    [wishes],
+  const creditLoopWishes = useMemo(() => {
+    if (creditBaseWishes.length === 0) {
+      return [];
+    }
+
+    const loopCount = 4;
+    const expanded = [];
+
+    for (let index = 0; index < loopCount; index += 1) {
+      creditBaseWishes.forEach((item) => {
+        expanded.push({
+          ...item,
+          loopKey: index,
+        });
+      });
+    }
+
+    return expanded;
+  }, [creditBaseWishes]);
+
+  const creditAnimationDuration = useMemo(
+    () => `${Math.max(22, creditBaseWishes.length * 4)}s`,
+    [creditBaseWishes.length],
   );
 
   useEffect(() => {
@@ -199,6 +253,10 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!hasEnteredApp || !hasFinishedGiftStep) {
+      return undefined;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) {
       return undefined;
@@ -279,7 +337,7 @@ function App() {
       window.removeEventListener("resize", setCanvasSize);
       window.cancelAnimationFrame(animationFrameId);
     };
-  }, []);
+  }, [hasEnteredApp, hasFinishedGiftStep]);
 
   useEffect(() => {
     if (!autoFire) {
@@ -1036,19 +1094,17 @@ function App() {
           <aside className="wish-credits">
             <p className="wish-credits-title">Credit loi chuc cua @{visitorName}</p>
             <div className="wish-credits-window">
-              {wishes.length === 0 ? (
-                <p className="wish-empty credits-empty">Gui loi chuc de hien thi o day.</p>
-              ) : (
-                <div
-                  className={`wish-credits-track ${wishes.length > 1 ? "animated" : ""}`}
-                >
-                  {creditLoopWishes.map((item, index) => (
-                    <p key={`${item.id}-${index}`} className="wish-credit-line">
-                      {item.content}
-                    </p>
-                  ))}
-                </div>
-              )}
+              <div
+                className="wish-credits-track animated"
+                style={{ "--credit-duration": creditAnimationDuration }}
+              >
+                {creditLoopWishes.map((item) => (
+                  <p key={`${item.id}-${item.loopKey}`} className="wish-credit-line">
+                    <span>{item.content}</span>
+                    <small>— {item.senderName}</small>
+                  </p>
+                ))}
+              </div>
             </div>
           </aside>
         </div>

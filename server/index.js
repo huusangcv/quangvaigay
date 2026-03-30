@@ -458,7 +458,21 @@ app.post("/api/media/upload", uploadMany, handleUploadMedia);
 
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
+    if (error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({
+        message: `413 Content Too Large: file vuot gioi han ${(maxFileSize / (1024 * 1024)).toFixed(1)}MB`,
+      });
+      return;
+    }
+
     res.status(400).json({ message: error.message });
+    return;
+  }
+
+  if (error?.status === 413 || error?.type === "entity.too.large") {
+    res
+      .status(413)
+      .json({ message: "413 Content Too Large: request vuot gioi han server" });
     return;
   }
 

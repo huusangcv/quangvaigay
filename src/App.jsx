@@ -11,6 +11,15 @@ const API_BASE_URL = (
 const apiUrl = (path) => `${API_BASE_URL}${path}`;
 const VISITOR_STORAGE_KEY = "dq-visitor-name";
 const GIFT_STEP_STORAGE_KEY = "dq-gift-step-complete";
+const DEFAULT_PROD_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
+const DEFAULT_DEV_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const RAW_CLIENT_UPLOAD_LIMIT = Number(import.meta.env.VITE_MAX_FILE_SIZE || "");
+const CLIENT_UPLOAD_LIMIT_BYTES =
+  Number.isFinite(RAW_CLIENT_UPLOAD_LIMIT) && RAW_CLIENT_UPLOAD_LIMIT > 0
+    ? RAW_CLIENT_UPLOAD_LIMIT
+    : import.meta.env.PROD
+      ? DEFAULT_PROD_UPLOAD_LIMIT_BYTES
+      : DEFAULT_DEV_UPLOAD_LIMIT_BYTES;
 const USERNAME_PATTERN = /^[a-zA-Z]+$/;
 const GIFT_BOX_SRC = "/media/birthday_gift.png";
 const TROLL_MONKEY_SRC = "/media/troll_monkey.webp";
@@ -107,11 +116,18 @@ const BASE_MEDIA = [
     src: "/media/AnhQuangThoNgoc.png",
     name: "Anh Quang Thỏ Ngọc",
   },
+
   {
     id: "img-3",
     type: "image",
     src: "/media/TayQuaVay.png",
     name: "Quang Tay Bac",
+  },
+  {
+    id: "img-4",
+    type: "video",
+    src: "/media/VuNuDangQuang.mp4",
+    name: "Vũ Nữ Đăng Quang",
   },
 ];
 
@@ -127,6 +143,11 @@ const normalizeUsernameInput = (value) =>
 const buildDefaultDisplayName = (fileName) => {
   const baseName = fileName.replace(/\.[^.]+$/, "").trim();
   return baseName || fileName;
+};
+
+const formatFileSizeLimitMb = (bytes) => {
+  const value = Math.round((bytes / (1024 * 1024)) * 10) / 10;
+  return Number.isInteger(value) ? String(value) : String(value);
 };
 
 const buildBurst = (x, y, text) => {
@@ -163,6 +184,19 @@ const buildBurst = (x, y, text) => {
 const getMediaTimestamp = (item) => {
   const timestamp = Date.parse(item?.createdAt || "");
   return Number.isNaN(timestamp) ? 0 : timestamp;
+};
+
+const parseApiPayload = async (response) => {
+  const rawText = await response.text();
+  if (!rawText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    return { message: rawText };
+  }
 };
 
 function App() {
@@ -958,6 +992,31 @@ function App() {
       return;
     }
 
+    const maxUploadMb = formatFileSizeLimitMb(CLIENT_UPLOAD_LIMIT_BYTES);
+    const oversizedFile = pendingUploads.find(
+      (item) => item.file.size > CLIENT_UPLOAD_LIMIT_BYTES,
+    );
+    if (oversizedFile) {
+      setUploadError(
+        `File ${oversizedFile.file.name} qua gioi han ${maxUploadMb}MB. Vui long nen file nho hon truoc khi upload.`,
+      );
+      return;
+    }
+
+    if (import.meta.env.PROD) {
+      const totalUploadSize = pendingUploads.reduce(
+        (sum, item) => sum + item.file.size,
+        0,
+      );
+
+      if (totalUploadSize > CLIENT_UPLOAD_LIMIT_BYTES) {
+        setUploadError(
+          `Tong dung luong request vuot ${maxUploadMb}MB nen Vercel co the tra 413 Content Too Large. Hay upload it file hon moi lan.`,
+        );
+        return;
+      }
+    }
+
     const formData = new FormData();
     pendingUploads.forEach((item) => {
       formData.append("files", item.file);
@@ -978,12 +1037,18 @@ function App() {
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await parseApiPayload(response);
       if (!response.ok) {
+        if (response.status === 413) {
+          throw new Error(
+            `413 Content Too Large: Video qua lon voi gioi han upload tren Vercel. Thu giam dung luong xuong duoi ${maxUploadMb}MB hoac dung cloud storage.`,
+          );
+        }
+
         throw new Error(data.message || "Upload that bai");
       }
 
-      const createdMedia = normalizeServerMedia(data.items);
+      const createdMedia = normalizeServerMedia(data.items || []);
       setServerMedia((prev) => [...createdMedia, ...prev]);
       setUploadMessage(`Da tai len ${createdMedia.length} file len server`);
       clearPendingUploads();

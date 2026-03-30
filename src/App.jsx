@@ -3,11 +3,11 @@ import "./App.css";
 
 const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").trim();
 const shouldIgnoreLocalhostApiBase =
-  import.meta.env.PROD && /^https?:\/\/localhost(?::\d+)?$/i.test(RAW_API_BASE_URL);
-const API_BASE_URL = (shouldIgnoreLocalhostApiBase ? "" : RAW_API_BASE_URL).replace(
-  /\/$/,
-  "",
-);
+  import.meta.env.PROD &&
+  /^https?:\/\/localhost(?::\d+)?$/i.test(RAW_API_BASE_URL);
+const API_BASE_URL = (
+  shouldIgnoreLocalhostApiBase ? "" : RAW_API_BASE_URL
+).replace(/\/$/, "");
 const apiUrl = (path) => `${API_BASE_URL}${path}`;
 
 const FIREWORK_WORDS = [
@@ -293,7 +293,7 @@ function App() {
     setUploadMessage("");
 
     try {
-      const response = await fetch(apiUrl("/api/media/upload"), {
+      const response = await fetch(apiUrl("/api/media/uploads"), {
         method: "POST",
         body: formData,
       });

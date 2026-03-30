@@ -13,7 +13,9 @@ const VISITOR_STORAGE_KEY = "dq-visitor-name";
 const GIFT_STEP_STORAGE_KEY = "dq-gift-step-complete";
 const DEFAULT_PROD_UPLOAD_LIMIT_BYTES = 4 * 1024 * 1024;
 const DEFAULT_DEV_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
-const RAW_CLIENT_UPLOAD_LIMIT = Number(import.meta.env.VITE_MAX_FILE_SIZE || "");
+const RAW_CLIENT_UPLOAD_LIMIT = Number(
+  import.meta.env.VITE_MAX_FILE_SIZE || "",
+);
 const CLIENT_UPLOAD_LIMIT_BYTES =
   Number.isFinite(RAW_CLIENT_UPLOAD_LIMIT) && RAW_CLIENT_UPLOAD_LIMIT > 0
     ? RAW_CLIENT_UPLOAD_LIMIT
@@ -115,13 +117,6 @@ const BASE_MEDIA = [
     type: "image",
     src: "/media/AnhQuangThoNgoc.png",
     name: "Anh Quang Thỏ Ngọc",
-  },
-
-  {
-    id: "img-3",
-    type: "image",
-    src: "/media/TayQuaVay.png",
-    name: "Quang Tay Bac",
   },
   {
     id: "img-4",

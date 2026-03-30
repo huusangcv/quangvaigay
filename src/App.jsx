@@ -107,11 +107,22 @@ function App() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const [uploadMessage, setUploadMessage] = useState("");
+  const [activeImageIndex, setActiveImageIndex] = useState(-1);
 
   const allMedia = useMemo(
     () => [...BASE_MEDIA, ...serverMedia],
     [serverMedia],
   );
+
+  const imageMedia = useMemo(
+    () => allMedia.filter((item) => item.type === "image"),
+    [allMedia],
+  );
+
+  const activeImage =
+    activeImageIndex >= 0 && activeImageIndex < imageMedia.length
+      ? imageMedia[activeImageIndex]
+      : null;
 
   const launchBurst = useCallback((x, y, amount = 2) => {
     for (let index = 0; index < amount; index += 1) {
@@ -306,6 +317,94 @@ function App() {
     fetchServerMedia();
   };
 
+  const openImagePreview = useCallback(
+    (mediaId) => {
+      const previewIndex = imageMedia.findIndex((item) => item.id === mediaId);
+      if (previewIndex !== -1) {
+        setActiveImageIndex(previewIndex);
+      }
+    },
+    [imageMedia],
+  );
+
+  const closeImagePreview = useCallback(() => {
+    setActiveImageIndex(-1);
+  }, []);
+
+  const showNextImage = useCallback(() => {
+    setActiveImageIndex((prev) => {
+      if (imageMedia.length === 0) {
+        return -1;
+      }
+
+      if (prev < 0) {
+        return 0;
+      }
+
+      return (prev + 1) % imageMedia.length;
+    });
+  }, [imageMedia.length]);
+
+  const showPrevImage = useCallback(() => {
+    setActiveImageIndex((prev) => {
+      if (imageMedia.length === 0) {
+        return -1;
+      }
+
+      if (prev < 0) {
+        return 0;
+      }
+
+      return (prev - 1 + imageMedia.length) % imageMedia.length;
+    });
+  }, [imageMedia.length]);
+
+  useEffect(() => {
+    if (activeImageIndex < 0) {
+      return;
+    }
+
+    if (imageMedia.length === 0) {
+      setActiveImageIndex(-1);
+      return;
+    }
+
+    if (activeImageIndex >= imageMedia.length) {
+      setActiveImageIndex(imageMedia.length - 1);
+    }
+  }, [activeImageIndex, imageMedia.length]);
+
+  useEffect(() => {
+    if (!activeImage) {
+      return undefined;
+    }
+
+    const handleKeydown = (event) => {
+      if (event.key === "Escape") {
+        closeImagePreview();
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        showNextImage();
+        return;
+      }
+
+      if (event.key === "ArrowLeft") {
+        showPrevImage();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeydown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeydown);
+    };
+  }, [activeImage, closeImagePreview, showNextImage, showPrevImage]);
+
   const handleFireZoneClick = (event) => {
     launchBurst(event.clientX, event.clientY, 3);
   };
@@ -419,9 +518,19 @@ function App() {
 
         <div className="media-grid">
           {allMedia.map((item) => (
-            <figure key={item.id} className="media-card">
+            <figure
+              key={item.id}
+              className={`media-card ${item.type === "image" ? "previewable" : ""}`}
+            >
               {item.type === "image" ? (
-                <img src={item.src} alt={item.name} loading="lazy" />
+                <button
+                  type="button"
+                  className="preview-trigger"
+                  onClick={() => openImagePreview(item.id)}
+                  aria-label={`Xem anh ${item.name}`}
+                >
+                  <img src={item.src} alt={item.name} loading="lazy" />
+                </button>
               ) : (
                 <video
                   src={item.src}
@@ -443,6 +552,65 @@ function App() {
           </article>
         </div>
       </section>
+
+      {activeImage ? (
+        <div
+          className="media-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Dang xem anh ${activeImage.name}`}
+          onClick={closeImagePreview}
+        >
+          <button
+            type="button"
+            className="lightbox-close"
+            onClick={closeImagePreview}
+            aria-label="Dong xem anh"
+          >
+            Dong
+          </button>
+
+          {imageMedia.length > 1 ? (
+            <>
+              <button
+                type="button"
+                className="lightbox-nav prev"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showPrevImage();
+                }}
+                aria-label="Anh truoc"
+              >
+                {"<"}
+              </button>
+              <button
+                type="button"
+                className="lightbox-nav next"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  showNextImage();
+                }}
+                aria-label="Anh tiep theo"
+              >
+                {">"}
+              </button>
+            </>
+          ) : null}
+
+          <figure
+            className="lightbox-figure"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <img src={activeImage.src} alt={activeImage.name} />
+            <figcaption>
+              <span>{activeImage.name}</span>
+              <span>
+                {activeImageIndex + 1}/{imageMedia.length}
+              </span>
+            </figcaption>
+          </figure>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -8,6 +8,150 @@
   z-index: 2;
 }
 
+.music-dock {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 72;
+  width: min(340px, calc(100vw - 1rem));
+  border: 1px solid rgba(97, 73, 86, 0.24);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 85% 12%, rgba(206, 224, 211, 0.36), transparent 46%),
+    linear-gradient(155deg, rgba(255, 251, 245, 0.93), rgba(248, 238, 231, 0.9));
+  box-shadow: 0 14px 34px rgba(62, 40, 53, 0.18);
+  backdrop-filter: blur(8px);
+  padding: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.music-dock audio {
+  width: 100%;
+  height: 30px;
+}
+
+.music-dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.music-dock-head strong {
+  font-size: 0.88rem;
+  color: var(--text-main);
+}
+
+.music-dock-head span {
+  border-radius: 999px;
+  border: 1px solid rgba(86, 63, 76, 0.22);
+  background: rgba(255, 255, 255, 0.75);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #56495d;
+  padding: 0.2rem 0.62rem;
+}
+
+.music-current-track {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.music-current-track span {
+  font-size: 0.87rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.music-current-track small {
+  color: var(--text-soft);
+  font-size: 0.77rem;
+}
+
+.music-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.44rem;
+}
+
+.music-controls .btn {
+  width: 100%;
+  padding: 0.46rem 0.65rem;
+  font-size: 0.81rem;
+  border-radius: 12px;
+}
+
+.music-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.58rem;
+  color: var(--text-soft);
+  font-size: 0.78rem;
+}
+
+.music-volume span {
+  min-width: 58px;
+}
+
+.music-volume input {
+  width: 100%;
+}
+
+.music-playlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.36rem;
+  max-height: 146px;
+  overflow-y: auto;
+}
+
+.music-track-btn {
+  width: 100%;
+  border: 1px solid rgba(97, 73, 86, 0.19);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-main);
+  font: inherit;
+  text-align: left;
+  padding: 0.44rem 0.52rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  cursor: pointer;
+}
+
+.music-track-btn span {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.music-track-btn small {
+  color: var(--text-soft);
+  font-size: 0.72rem;
+}
+
+.music-track-btn.active {
+  background: linear-gradient(145deg, #d8b9c9, #c4d6cb);
+  border-color: rgba(100, 64, 88, 0.32);
+}
+
+.music-note {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-soft);
+}
+
+.music-note.error {
+  color: #a43a54;
+}
+
 .emoji-rain-layer {
   position: fixed;
   inset: 0;
@@ -1430,6 +1574,13 @@
   .app-shell {
     margin-top: 1rem;
     width: calc(100% - 1rem);
+  }
+
+  .music-dock {
+    right: 0.5rem;
+    bottom: 0.5rem;
+    left: 0.5rem;
+    width: auto;
   }
 
   .wish-grid {

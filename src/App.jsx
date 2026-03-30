@@ -194,9 +194,149 @@ const parseApiPayload = async (response) => {
   }
 };
 
+const NOTE_FREQUENCIES = {
+  C4: 261.63,
+  D4: 293.66,
+  E4: 329.63,
+  F4: 349.23,
+  G4: 392,
+  A4: 440,
+  B4: 493.88,
+  C5: 523.25,
+  D5: 587.33,
+  E5: 659.25,
+  G5: 783.99,
+};
+
+const BIRTHDAY_MUSIC_BLUEPRINTS = [
+  {
+    id: "synth-funny-1",
+    title: "Banh Kem Bung No",
+    artist: "Synth Troll",
+    bpm: 146,
+    waveform: "square",
+    notes: [
+      { note: "C4", beats: 0.5 },
+      { note: "E4", beats: 0.5 },
+      { note: "G4", beats: 0.5 },
+      { note: "C5", beats: 0.75 },
+      { note: "REST", beats: 0.25 },
+      { note: "B4", beats: 0.5 },
+      { note: "G4", beats: 0.5 },
+      { note: "E4", beats: 0.5 },
+      { note: "D4", beats: 0.5 },
+      { note: "E4", beats: 0.5 },
+      { note: "G4", beats: 0.5 },
+      { note: "C5", beats: 1 },
+    ],
+  },
+  {
+    id: "synth-funny-2",
+    title: "Quang Gay Parade",
+    artist: "DJ Bua",
+    bpm: 132,
+    waveform: "triangle",
+    notes: [
+      { note: "G4", beats: 0.5 },
+      { note: "A4", beats: 0.5 },
+      { note: "B4", beats: 0.5 },
+      { note: "D5", beats: 0.75 },
+      { note: "REST", beats: 0.25 },
+      { note: "E5", beats: 0.75 },
+      { note: "D5", beats: 0.5 },
+      { note: "B4", beats: 0.5 },
+      { note: "A4", beats: 0.5 },
+      { note: "G4", beats: 0.5 },
+      { note: "E4", beats: 0.75 },
+      { note: "REST", beats: 0.25 },
+      { note: "G4", beats: 0.75 },
+    ],
+  },
+];
+
+const buildWaveSample = (phase, waveform) => {
+  if (waveform === "square") {
+    return Math.sin(phase) >= 0 ? 1 : -1;
+  }
+
+  if (waveform === "triangle") {
+    return (2 / Math.PI) * Math.asin(Math.sin(phase));
+  }
+
+  return Math.sin(phase);
+};
+
+const createSynthTrackUrl = (blueprint) => {
+  const sampleRate = 22050;
+  const beatSeconds = 60 / blueprint.bpm;
+  const samples = [];
+
+  blueprint.notes.forEach((entry) => {
+    const durationSeconds = Math.max(0.08, entry.beats * beatSeconds);
+    const frameCount = Math.floor(durationSeconds * sampleRate);
+    const frequency =
+      entry.note && entry.note !== "REST"
+        ? NOTE_FREQUENCIES[entry.note] || 0
+        : 0;
+
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      let value = 0;
+
+      if (frequency > 0) {
+        const phase = (2 * Math.PI * frequency * frame) / sampleRate;
+        const attack = Math.min(1, frame / (sampleRate * 0.015));
+        const release = Math.min(1, (frameCount - frame) / (sampleRate * 0.04));
+        const envelope = Math.min(attack, release);
+        value = buildWaveSample(phase, blueprint.waveform) * envelope * 0.22;
+      }
+
+      samples.push(Math.max(-1, Math.min(1, value)));
+    }
+
+    const gapFrames = Math.floor(sampleRate * 0.014);
+    for (let gap = 0; gap < gapFrames; gap += 1) {
+      samples.push(0);
+    }
+  });
+
+  const bytesPerSample = 2;
+  const dataSize = samples.length * bytesPerSample;
+  const wavBuffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(wavBuffer);
+
+  const writeAscii = (offset, text) => {
+    for (let index = 0; index < text.length; index += 1) {
+      view.setUint8(offset + index, text.charCodeAt(index));
+    }
+  };
+
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let pointer = 44;
+  samples.forEach((sample) => {
+    view.setInt16(pointer, sample * 0x7fff, true);
+    pointer += bytesPerSample;
+  });
+
+  return URL.createObjectURL(new Blob([wavBuffer], { type: "audio/wav" }));
+};
+
 function App() {
   const canvasRef = useRef(null);
   const uploadInputRef = useRef(null);
+  const musicAudioRef = useRef(null);
   const wishListRef = useRef(null);
   const burstsRef = useRef([]);
   const phraseQueueRef = useRef(0);
@@ -239,6 +379,10 @@ function App() {
   const [mediaSearch, setMediaSearch] = useState("");
   const [isCompactMedia, setIsCompactMedia] = useState(false);
   const [activePreviewMediaId, setActivePreviewMediaId] = useState("");
+  const [musicTrackIndex, setMusicTrackIndex] = useState(0);
+  const [isMusicPlaying, setIsMusicPlaying] = useState(false);
+  const [musicVolume, setMusicVolume] = useState(0.62);
+  const [musicNotice, setMusicNotice] = useState("");
 
   const allMedia = useMemo(
     () => [...BASE_MEDIA, ...serverMedia],
@@ -310,6 +454,57 @@ function App() {
 
   const activePreviewMedia =
     activePreviewIndex >= 0 ? displayedMedia[activePreviewIndex] : null;
+
+  const generatedMusicTracks = useMemo(() => {
+    if (typeof window === "undefined") {
+      return [];
+    }
+
+    return BIRTHDAY_MUSIC_BLUEPRINTS.map((blueprint) => ({
+      id: blueprint.id,
+      title: blueprint.title,
+      artist: blueprint.artist,
+      src: createSynthTrackUrl(blueprint),
+    }));
+  }, []);
+
+  useEffect(
+    () => () => {
+      generatedMusicTracks.forEach((track) => {
+        if (track.src.startsWith("blob:")) {
+          URL.revokeObjectURL(track.src);
+        }
+      });
+    },
+    [generatedMusicTracks],
+  );
+
+  const birthdayPlaylist = useMemo(
+    () => [
+      // {
+      //   id: "birthday-funny-1",
+      //   title: "Bua Birthday Bounce",
+      //   artist: "Party Bot",
+      //   src: "/media/birthday_funny_1.mp3",
+      // },
+      // {
+      //   id: "birthday-funny-2",
+      //   title: "Quang Parade Beat",
+      //   artist: "Laugh Machine",
+      //   src: "/media/birthday_funny_2.mp3",
+      // },
+      {
+        id: "birthday-remix",
+        title: "na na na anh domixi Remix",
+        artist: "DJ Ban Than",
+        src: "/media/tiktok_audio.mp3",
+      },
+      // ...generatedMusicTracks,
+    ],
+    [generatedMusicTracks],
+  );
+
+  const activeMusicTrack = birthdayPlaylist[musicTrackIndex] || null;
 
   const managedWishes = useMemo(() => {
     const normalizedQuery = wishSearch.trim().toLowerCase();
@@ -1188,6 +1383,141 @@ function App() {
     };
   }, [activePreviewMedia, closeMediaPreview, showNextMedia, showPrevMedia]);
 
+  useEffect(() => {
+    if (birthdayPlaylist.length === 0) {
+      return;
+    }
+
+    if (musicTrackIndex >= birthdayPlaylist.length) {
+      setMusicTrackIndex(0);
+    }
+  }, [birthdayPlaylist.length, musicTrackIndex]);
+
+  const playMusic = useCallback(async () => {
+    const audioElement = musicAudioRef.current;
+    if (!audioElement) {
+      return;
+    }
+
+    try {
+      await audioElement.play();
+      setIsMusicPlaying(true);
+      setMusicNotice("");
+    } catch {
+      setIsMusicPlaying(false);
+      setMusicNotice("Trinh duyet dang chan autoplay. Bam 'Phat nhac' de bat.");
+    }
+  }, []);
+
+  const pauseMusic = useCallback(() => {
+    const audioElement = musicAudioRef.current;
+    if (!audioElement) {
+      return;
+    }
+
+    audioElement.pause();
+    setIsMusicPlaying(false);
+  }, []);
+
+  const playNextTrack = useCallback(() => {
+    if (birthdayPlaylist.length === 0) {
+      return;
+    }
+
+    setMusicTrackIndex((prev) => (prev + 1) % birthdayPlaylist.length);
+    setIsMusicPlaying(true);
+    setMusicNotice("");
+  }, [birthdayPlaylist.length]);
+
+  const toggleMusicPlayback = useCallback(() => {
+    if (isMusicPlaying) {
+      pauseMusic();
+      return;
+    }
+
+    void playMusic();
+  }, [isMusicPlaying, pauseMusic, playMusic]);
+
+  const selectMusicTrack = useCallback(
+    (index) => {
+      if (index < 0 || index >= birthdayPlaylist.length) {
+        return;
+      }
+
+      setMusicTrackIndex(index);
+      setIsMusicPlaying(true);
+      setMusicNotice("");
+    },
+    [birthdayPlaylist.length],
+  );
+
+  useEffect(() => {
+    const audioElement = musicAudioRef.current;
+    if (!audioElement) {
+      return;
+    }
+
+    audioElement.volume = musicVolume;
+  }, [musicVolume]);
+
+  useEffect(() => {
+    if (birthdayPlaylist.length === 0) {
+      return;
+    }
+
+    setIsMusicPlaying(true);
+  }, [birthdayPlaylist.length]);
+
+  useEffect(() => {
+    const audioElement = musicAudioRef.current;
+    if (!audioElement || !activeMusicTrack) {
+      return;
+    }
+
+    audioElement.load();
+    if (isMusicPlaying) {
+      void playMusic();
+      return;
+    }
+
+    audioElement.pause();
+  }, [activeMusicTrack, isMusicPlaying, playMusic]);
+
+  useEffect(() => {
+    const audioElement = musicAudioRef.current;
+    if (!audioElement) {
+      return undefined;
+    }
+
+    const handleEnded = () => {
+      if (birthdayPlaylist.length === 0) {
+        return;
+      }
+
+      setMusicTrackIndex((prev) => (prev + 1) % birthdayPlaylist.length);
+      setIsMusicPlaying(true);
+    };
+
+    const handlePlay = () => {
+      setIsMusicPlaying(true);
+      setMusicNotice("");
+    };
+
+    const handlePause = () => {
+      setIsMusicPlaying(false);
+    };
+
+    audioElement.addEventListener("ended", handleEnded);
+    audioElement.addEventListener("play", handlePlay);
+    audioElement.addEventListener("pause", handlePause);
+
+    return () => {
+      audioElement.removeEventListener("ended", handleEnded);
+      audioElement.removeEventListener("play", handlePlay);
+      audioElement.removeEventListener("pause", handlePause);
+    };
+  }, [birthdayPlaylist.length]);
+
   const handleFireZoneClick = (event) => {
     launchBurst(event.clientX, event.clientY, 3);
   };
@@ -1221,810 +1551,891 @@ function App() {
     }
   };
 
+  const musicWidget = activeMusicTrack ? (
+    <aside className="music-dock" aria-label="Danh sach nhac sinh nhat">
+      <audio ref={musicAudioRef} src={activeMusicTrack.src} preload="auto" />
+
+      <div className="music-dock-head">
+        <strong>Birthday Boombox</strong>
+        <span>{isMusicPlaying ? "Dang phat" : "Tam dung"}</span>
+      </div>
+
+      <p className="music-current-track">
+        <span>{activeMusicTrack.title}</span>
+        <small>{activeMusicTrack.artist}</small>
+      </p>
+
+      <div className="music-controls">
+        <button type="button" className="btn" onClick={toggleMusicPlayback}>
+          {isMusicPlaying ? "Tam dung" : "Phat nhac"}
+        </button>
+        <button type="button" className="btn" onClick={playNextTrack}>
+          Bai tiep
+        </button>
+      </div>
+
+      <label className="music-volume" htmlFor="music-volume-input">
+        <span>Am luong</span>
+        <input
+          id="music-volume-input"
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={musicVolume}
+          onChange={(event) => setMusicVolume(Number(event.target.value))}
+        />
+      </label>
+
+      <ul className="music-playlist">
+        {birthdayPlaylist.map((track, index) => (
+          <li key={track.id}>
+            <button
+              type="button"
+              className={`music-track-btn ${index === musicTrackIndex ? "active" : ""}`}
+              onClick={() => selectMusicTrack(index)}
+            >
+              <span>
+                {index + 1}. {track.title}
+              </span>
+              <small>{track.artist}</small>
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <p className={`music-note ${musicNotice ? "error" : ""}`}>
+        {musicNotice || "Playlist se tu dong qua bai tiep theo khi het nhac."}
+      </p>
+    </aside>
+  ) : null;
+
   if (!hasEnteredApp) {
     return (
-      <div className="entry-gate-shell">
-        <section className="entry-gate-card">
-          <p className="eyebrow">Welcome</p>
-          <h1>Nhap ten de vao tiec sinh nhat Dang Quang</h1>
-          <p className="lead">
-            Ten cua ban se duoc dung khi gui loi chuc den Dang Quang.
-          </p>
-
-          <form className="entry-form" onSubmit={handleEnterApp}>
-            <label htmlFor="visitor-name">Ten cua ban</label>
-            <input
-              id="visitor-name"
-              type="text"
-              value={visitorDraftName}
-              maxLength={80}
-              onChange={(event) => {
-                setVisitorDraftName(
-                  normalizeUsernameInput(event.target.value).slice(0, 80),
-                );
-                if (visitorError) {
-                  setVisitorError("");
-                }
-              }}
-              placeholder="Vi du: hieu, lam, vy"
-              autoComplete="username"
-              spellCheck={false}
-              autoFocus
-            />
-            <p className="entry-rule">
-              Chi duoc nhap chu khong dau va viet lien.
+      <>
+        <div className="entry-gate-shell">
+          <section className="entry-gate-card">
+            <p className="eyebrow">Welcome</p>
+            <h1>Nhap ten de vao tiec sinh nhat Dang Quang</h1>
+            <p className="lead">
+              Ten cua ban se duoc dung khi gui loi chuc den Dang Quang.
             </p>
-            {visitorError ? (
-              <p className="upload-status error">{visitorError}</p>
-            ) : null}
-            <button type="submit" className="btn primary entry-submit">
-              Vao web
-            </button>
-          </form>
-        </section>
-      </div>
+
+            <form className="entry-form" onSubmit={handleEnterApp}>
+              <label htmlFor="visitor-name">Ten cua ban</label>
+              <input
+                id="visitor-name"
+                type="text"
+                value={visitorDraftName}
+                maxLength={80}
+                onChange={(event) => {
+                  setVisitorDraftName(
+                    normalizeUsernameInput(event.target.value).slice(0, 80),
+                  );
+                  if (visitorError) {
+                    setVisitorError("");
+                  }
+                }}
+                placeholder="Vi du: hieu, lam, vy"
+                autoComplete="username"
+                spellCheck={false}
+                autoFocus
+              />
+              <p className="entry-rule">
+                Chi duoc nhap chu khong dau va viet lien.
+              </p>
+              {visitorError ? (
+                <p className="upload-status error">{visitorError}</p>
+              ) : null}
+              <button type="submit" className="btn primary entry-submit">
+                Vao web
+              </button>
+            </form>
+          </section>
+        </div>
+        {musicWidget}
+      </>
     );
   }
 
   if (!hasFinishedGiftStep) {
     return (
-      <div className="entry-gate-shell">
+      <>
+        <div className="entry-gate-shell">
+          <canvas
+            ref={canvasRef}
+            className="firework-canvas"
+            aria-hidden="true"
+          />
+
+          <section className="entry-gate-card gift-step-card">
+            <p className="eyebrow">Chao {visitorName}</p>
+            <h1>
+              {hasOpenedGift ? "Hop qua da mo" : "Ban co mot hop qua bat ngo"}
+            </h1>
+            <p className="lead">
+              {hasOpenedGift
+                ? "Qua troll da xuat hien. Bam tiep de vao tiec sinh nhat Dang Quang."
+                : "Bam vao hop qua de mo qua truoc khi vao ben trong."}
+            </p>
+
+            {!hasOpenedGift ? (
+              <button
+                type="button"
+                className="gift-trigger"
+                onClick={handleOpenGift}
+                aria-label="Mo hop qua"
+              >
+                <img src={GIFT_BOX_SRC} alt="Hop qua" />
+                <span>Mo hop qua</span>
+              </button>
+            ) : (
+              <div className="gift-reveal">
+                <img
+                  src={TROLL_MONKEY_SRC}
+                  alt="Con vuon troll"
+                  className="gift-troll-image"
+                />
+                <button
+                  type="button"
+                  className="btn primary gift-continue-btn"
+                  onClick={handleContinueAfterGift}
+                >
+                  Vao tiec ngay
+                </button>
+              </div>
+            )}
+          </section>
+        </div>
+        {musicWidget}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="app-shell">
         <canvas
           ref={canvasRef}
           className="firework-canvas"
           aria-hidden="true"
         />
 
-        <section className="entry-gate-card gift-step-card">
-          <p className="eyebrow">Chao {visitorName}</p>
-          <h1>
-            {hasOpenedGift ? "Hop qua da mo" : "Ban co mot hop qua bat ngo"}
-          </h1>
-          <p className="lead">
-            {hasOpenedGift
-              ? "Qua troll da xuat hien. Bam tiep de vao tiec sinh nhat Dang Quang."
-              : "Bam vao hop qua de mo qua truoc khi vao ben trong."}
-          </p>
-
-          {!hasOpenedGift ? (
-            <button
-              type="button"
-              className="gift-trigger"
-              onClick={handleOpenGift}
-              aria-label="Mo hop qua"
+        <div className="emoji-rain-layer" aria-hidden="true">
+          {emojiDrops.map((item) => (
+            <span
+              key={item.id}
+              className="emoji-drop"
+              style={{
+                "--left": `${item.left}%`,
+                "--delay": `${item.delay}s`,
+                "--duration": `${item.duration}s`,
+                "--rotate": `${item.rotate}deg`,
+                "--size": item.size,
+              }}
             >
-              <img src={GIFT_BOX_SRC} alt="Hop qua" />
-              <span>Mo hop qua</span>
-            </button>
-          ) : (
-            <div className="gift-reveal">
-              <img
-                src={TROLL_MONKEY_SRC}
-                alt="Con vuon troll"
-                className="gift-troll-image"
-              />
-              <button
-                type="button"
-                className="btn primary gift-continue-btn"
-                onClick={handleContinueAfterGift}
-              >
-                Vao tiec ngay
-              </button>
-            </div>
-          )}
-        </section>
-      </div>
-    );
-  }
-
-  return (
-    <div className="app-shell">
-      <canvas ref={canvasRef} className="firework-canvas" aria-hidden="true" />
-
-      <div className="emoji-rain-layer" aria-hidden="true">
-        {emojiDrops.map((item) => (
-          <span
-            key={item.id}
-            className="emoji-drop"
-            style={{
-              "--left": `${item.left}%`,
-              "--delay": `${item.delay}s`,
-              "--duration": `${item.duration}s`,
-              "--rotate": `${item.rotate}deg`,
-              "--size": item.size,
-            }}
-          >
-            {item.emoji}
-          </span>
-        ))}
-      </div>
-
-      <header className="hero-card">
-        <p className="eyebrow">Birthday roast mode</p>
-        <h1>Chuc mung sinh nhat Quang gay go</h1>
-        <p className="lead">
-          Chuc Quang tuoi moi luon vui, luon chat, tiec tung bung va ghi lai
-          that nhieu khoanh khac dep de khoe voi hoi ban than.
-        </p>
-        <p className="visitor-badge">Nguoi dang truy cap: {visitorName}</p>
-      </header>
-
-      <section className="wish-grid">
-        <article className="panel">
-          <h2>Loi chuc danh cho Quang</h2>
-          <p>
-            Happy birthday Quang. Chuc ban luc nao cung duoc song dung vibe cua
-            minh, thay doi the gioi bang su tu tin, vui nhon va mot chut bua de
-            ai cung nho.
-          </p>
-          <p>
-            Team hom nay se no tung bung voi loat cau danh dau thuong hieu:
-            Quang Gay, Quang co gay khong, co gay rat gay.
-          </p>
-        </article>
-
-        <article className="panel fire-zone" onClick={handleFireZoneClick}>
-          <h2>Bam de ban phao hoa chu</h2>
-          <p>
-            Click vao khu vuc nay de no ra chu. Cang click nhanh thi cang bung
-            no. Bat che do lien thanh de tiec cang cua.
-          </p>
-
-          <div className="button-row">
-            <button
-              type="button"
-              className="btn primary"
-              onClick={triggerRandomBurst}
-            >
-              Ban phao hoa nua
-            </button>
-            <button type="button" className="btn" onClick={toggleAutoFire}>
-              {autoFire ? "Tat ban lien thanh" : "Bat ban lien thanh"}
-            </button>
-          </div>
-
-          <p className="fire-hint">
-            Chu se no lan luot: {FIREWORK_WORDS.join(" | ")}
-          </p>
-        </article>
-      </section>
-
-      <section className="panel fun-lab">
-        <div className="fun-lab-head">
-          <h2>Fun Lab Bua Party</h2>
-          <p>
-            Tha reaction, quay challenge, va kich hoat emoji rain de tiec vui
-            nhon hon.
-          </p>
+              {item.emoji}
+            </span>
+          ))}
         </div>
 
-        <div className="fun-lab-grid">
-          <article className="fun-card reactions-card">
-            <h3>Tha reaction nhanh</h3>
-            <div className="reaction-row">
-              {PARTY_REACTION_CONFIG.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className="reaction-btn"
-                  onClick={() => tapReaction(item.key)}
-                >
-                  <span>
-                    {item.emoji} {item.label}
-                  </span>
-                  <strong>{reactionStats[item.key] || 0}</strong>
-                </button>
-              ))}
-            </div>
+        <header className="hero-card">
+          <p className="eyebrow">Birthday roast mode</p>
+          <h1>Chuc mung sinh nhat Quang gay go</h1>
+          <p className="lead">
+            Chuc Quang tuoi moi luon vui, luon chat, tiec tung bung va ghi lai
+            that nhieu khoanh khac dep de khoe voi hoi ban than.
+          </p>
+          <p className="visitor-badge">Nguoi dang truy cap: {visitorName}</p>
+        </header>
+
+        <section className="wish-grid">
+          <article className="panel">
+            <h2>Loi chuc danh cho Quang</h2>
+            <p>
+              Happy birthday Quang. Chuc ban luc nao cung duoc song dung vibe
+              cua minh, thay doi the gioi bang su tu tin, vui nhon va mot chut
+              bua de ai cung nho.
+            </p>
+            <p>
+              Team hom nay se no tung bung voi loat cau danh dau thuong hieu:
+              Quang Gay, Quang co gay khong, co gay rat gay.
+            </p>
           </article>
 
-          <article className="fun-card challenge-card">
-            <h3>Challenge bựa</h3>
-            <p className="challenge-text">{partyChallenge}</p>
-            <div className="button-row fun-actions">
+          <article className="panel fire-zone" onClick={handleFireZoneClick}>
+            <h2>Bam de ban phao hoa chu</h2>
+            <p>
+              Click vao khu vuc nay de no ra chu. Cang click nhanh thi cang bung
+              no. Bat che do lien thanh de tiec cang cua.
+            </p>
+
+            <div className="button-row">
               <button
                 type="button"
                 className="btn primary"
-                onClick={spinPartyChallenge}
+                onClick={triggerRandomBurst}
               >
-                Quay challenge
+                Ban phao hoa nua
               </button>
-              <button type="button" className="btn" onClick={triggerEmojiRain}>
-                Emoji rain
+              <button type="button" className="btn" onClick={toggleAutoFire}>
+                {autoFire ? "Tat ban lien thanh" : "Bat ban lien thanh"}
               </button>
             </div>
-          </article>
-        </div>
-      </section>
 
-      <section className="panel wish-board">
-        <div className="wish-board-layout">
-          <div className="wish-board-main">
-            <div className="wish-board-head">
-              <h2>Gui loi chuc den Dang Quang</h2>
-              <p>
-                Ban dang xem va quan ly loi chuc cua rieng minh:{" "}
-                <strong>@{visitorName}</strong>
-              </p>
-            </div>
-
-            <div className="wish-system-grid">
-              <div className="wish-module wish-compose-module">
-                <div className="wish-module-head">
-                  <h3>Composer</h3>
-                  <span>Tao loi chuc</span>
-                </div>
-
-                <div className="wish-presets">
-                  {WISH_TEMPLATES.map((template) => (
-                    <button
-                      key={template}
-                      type="button"
-                      className="wish-chip"
-                      onClick={() => appendWishTemplate(template)}
-                      disabled={isSendingWish}
-                    >
-                      {template}
-                    </button>
-                  ))}
-
-                  <button
-                    type="button"
-                    className="wish-chip random"
-                    onClick={applyRandomWish}
-                    disabled={isSendingWish}
-                  >
-                    Random bua
-                  </button>
-                </div>
-
-                <form className="wish-form" onSubmit={handleSendWish}>
-                  <textarea
-                    value={wishDraft}
-                    onChange={(event) => setWishDraft(event.target.value)}
-                    maxLength={500}
-                    placeholder="Viet loi chuc cua ban..."
-                    disabled={isSendingWish}
-                  />
-                  <div className="wish-form-actions">
-                    <button
-                      type="submit"
-                      className="btn primary"
-                      disabled={isSendingWish}
-                    >
-                      {isSendingWish ? "Dang gui..." : "Gui loi chuc"}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={refreshWishData}
-                      disabled={isLoadingWishes || isSendingWish}
-                    >
-                      {isLoadingWishes ? "Dang tai..." : "Tai lai loi chuc"}
-                    </button>
-                  </div>
-                </form>
-
-                {wishMessage ? (
-                  <p className="upload-status">{wishMessage}</p>
-                ) : null}
-                {wishError ? (
-                  <p className="upload-status error">{wishError}</p>
-                ) : null}
-              </div>
-
-              <div className="wish-module wish-manager-module">
-                <div className="wish-module-head">
-                  <h3>Manager</h3>
-                  <span>Search - Sort - Page</span>
-                </div>
-
-                <div className="wish-manager-toolbar">
-                  <input
-                    type="search"
-                    className="wish-search-input"
-                    placeholder="Tim noi dung loi chuc..."
-                    value={wishSearch}
-                    onChange={(event) => setWishSearch(event.target.value)}
-                  />
-
-                  <select
-                    className="wish-sort-select"
-                    value={wishSort}
-                    onChange={(event) => setWishSort(event.target.value)}
-                  >
-                    <option value="latest">Moi nhat</option>
-                    <option value="oldest">Cu nhat</option>
-                    <option value="longest">Dai nhat</option>
-                    <option value="shortest">Ngan nhat</option>
-                  </select>
-                </div>
-
-                <div className="wish-list-shell">
-                  <div className="wish-list-head">
-                    <strong>Loi chuc cua ban</strong>
-                    <span>{wishRangeLabel}</span>
-                  </div>
-
-                  <div className="wish-list" ref={wishListRef}>
-                    {managedWishes.length === 0 && !isLoadingWishes ? (
-                      <p className="wish-empty">
-                        {wishSearch.trim()
-                          ? "Khong tim thay loi chuc phu hop voi tu khoa nay."
-                          : "Ban chua gui loi chuc nao."}
-                      </p>
-                    ) : null}
-
-                    {pagedWishes.map((item) => {
-                      const isEditing = editingWishId === item.id;
-                      const isUpdating = updatingWishIds.includes(item.id);
-                      const isDeleting = deletingWishIds.includes(item.id);
-
-                      return (
-                        <article key={item.id} className="wish-item">
-                          {isEditing ? (
-                            <>
-                              <textarea
-                                className="wish-edit-input"
-                                value={editingWishDraft}
-                                onChange={(event) =>
-                                  setEditingWishDraft(event.target.value)
-                                }
-                                maxLength={500}
-                                disabled={isUpdating}
-                              />
-                              <div className="wish-item-actions">
-                                <button
-                                  type="button"
-                                  className="btn primary"
-                                  onClick={() => handleSaveWishEdit(item.id)}
-                                  disabled={isUpdating}
-                                >
-                                  {isUpdating ? "Dang luu..." : "Luu"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn"
-                                  onClick={handleCancelEditWish}
-                                  disabled={isUpdating}
-                                >
-                                  Huy
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <p
-                                className="wish-content-text"
-                                title={item.content}
-                              >
-                                {item.content}
-                              </p>
-                              <p className="wish-meta">
-                                {formatWishDate(item.createdAt)}
-                              </p>
-                              <div className="wish-item-actions">
-                                <button
-                                  type="button"
-                                  className="btn"
-                                  onClick={() => handleStartEditWish(item)}
-                                  disabled={isDeleting}
-                                >
-                                  Sua
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn wish-danger"
-                                  onClick={() => handleDeleteWish(item)}
-                                  disabled={isDeleting}
-                                >
-                                  {isDeleting ? "Dang xoa..." : "Xoa"}
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </article>
-                      );
-                    })}
-                  </div>
-
-                  <div className="wish-pagination">
-                    <button
-                      type="button"
-                      className="btn wish-page-btn"
-                      onClick={() =>
-                        setWishPage((prev) => Math.max(1, prev - 1))
-                      }
-                      disabled={currentWishPage === 1}
-                    >
-                      Truoc
-                    </button>
-                    <p>
-                      Trang {currentWishPage}/{wishPageCount} • {wishes.length}{" "}
-                      tong
-                    </p>
-                    <button
-                      type="button"
-                      className="btn wish-page-btn"
-                      onClick={() =>
-                        setWishPage((prev) => Math.min(wishPageCount, prev + 1))
-                      }
-                      disabled={currentWishPage === wishPageCount}
-                    >
-                      Sau
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <aside className="wish-credits" style={{ marginTop: 70 }}>
-            <p className="wish-credits-title">Credit loi chuc cong dong</p>
-            <p className="wish-credits-meta">
-              {communityWishes.length} loi chuc tu moi nguoi
+            <p className="fire-hint">
+              Chu se no lan luot: {FIREWORK_WORDS.join(" | ")}
             </p>
-            <div className="wish-credits-window">
-              <div
-                className="wish-credits-track animated"
-                style={{ "--credit-duration": creditAnimationDuration }}
-              >
-                {creditLoopWishes.map((item) => (
-                  <p
-                    key={`${item.id}-${item.loopKey}`}
-                    className="wish-credit-line"
+          </article>
+        </section>
+
+        <section className="panel fun-lab">
+          <div className="fun-lab-head">
+            <h2>Fun Lab Bua Party</h2>
+            <p>
+              Tha reaction, quay challenge, va kich hoat emoji rain de tiec vui
+              nhon hon.
+            </p>
+          </div>
+
+          <div className="fun-lab-grid">
+            <article className="fun-card reactions-card">
+              <h3>Tha reaction nhanh</h3>
+              <div className="reaction-row">
+                {PARTY_REACTION_CONFIG.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="reaction-btn"
+                    onClick={() => tapReaction(item.key)}
                   >
-                    <span>{item.content}</span>
-                    <small>— {item.senderName}</small>
-                  </p>
+                    <span>
+                      {item.emoji} {item.label}
+                    </span>
+                    <strong>{reactionStats[item.key] || 0}</strong>
+                  </button>
                 ))}
               </div>
-            </div>
-          </aside>
-        </div>
-      </section>
+            </article>
 
-      <section className="panel media-panel">
-        <div className="media-header">
-          <div className="media-intro">
-            <h2>Album cua Quang</h2>
-            <p className="media-guide">
-              Bao Nhiêu Hoa Anh Chỉ Chọn Một Cành Bao Nhiêu Người Anh Chỉ Chọn
-              Mỗi Em
-            </p>
-
-            <a
-              href="https://www.facebook.com/photo?fbid=1062066317902870&set=a.115345732574938"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="media-intro-link"
-            >
-              nữ hoàng băng giá đụng đâu cứng đó
-            </a>
-          </div>
-        </div>
-
-        <div className="media-upload-zone">
-          <div className="upload-actions">
-            <label
-              htmlFor="media-upload"
-              className="btn action-btn primary as-label"
-            >
-              <span className="action-step">1</span>
-              <span className="action-copy">
-                <strong>Chon file</strong>
-                <small>Anh hoac video</small>
-              </span>
-            </label>
-            <input
-              id="media-upload"
-              type="file"
-              accept="image/*,video/*"
-              multiple
-              disabled={isUploading}
-              onChange={handleFilesSelected}
-              ref={uploadInputRef}
-            />
-            <button
-              type="button"
-              className="btn action-btn primary"
-              onClick={handleUpload}
-              disabled={isUploading || pendingUploads.length === 0}
-            >
-              <span className="action-step">3</span>
-              <span className="action-copy">
-                <strong>
-                  {isUploading ? "Dang tai len" : "Tai len album"}
-                </strong>
-                <small>
-                  {pendingUploads.length > 0
-                    ? `${pendingUploads.length} file dang cho`
-                    : "Can chon file truoc"}
-                </small>
-              </span>
-            </button>
-            <button
-              type="button"
-              className="btn action-btn ghost"
-              onClick={refreshAlbum}
-              disabled={isLoadingMedia || isUploading}
-            >
-              <span className="action-step">R</span>
-              <span className="action-copy">
-                <strong>
-                  {isLoadingMedia ? "Dang tai lai" : "Tai lai album"}
-                </strong>
-                <small>Dong bo tu server</small>
-              </span>
-            </button>
-          </div>
-
-          <p
-            className={`upload-selection ${pendingUploads.length === 0 ? "muted" : ""}`}
-          >
-            {pendingUploads.length > 0
-              ? `Buoc 2: Dat ten cho ${pendingUploads.length} file ben duoi.`
-              : "Chua co file nao duoc chon."}
-          </p>
-        </div>
-
-        {uploadMessage ? (
-          <p className="upload-status">{uploadMessage}</p>
-        ) : null}
-        {uploadError ? (
-          <p className="upload-status error">{uploadError}</p>
-        ) : null}
-
-        {pendingUploads.length > 0 ? (
-          <div className="upload-drafts">
-            <div className="upload-drafts-head">
-              <strong>Buoc 2: Dat ten hien thi cho tung file</strong>
-              <button
-                type="button"
-                className="btn draft-clear"
-                onClick={clearPendingUploads}
-                disabled={isUploading}
-              >
-                Xoa danh sach
-              </button>
-            </div>
-
-            {pendingUploads.map((item, index) => (
-              <div key={item.id} className="draft-item">
-                <div className="draft-origin">
-                  <span className="draft-index">{index + 1}</span>
-                  <span title={item.file.name}>{item.file.name}</span>
-                </div>
-                <div className="draft-item-editor">
-                  <input
-                    type="text"
-                    value={item.displayName}
-                    maxLength={120}
-                    onChange={(event) =>
-                      updatePendingUploadName(item.id, event.target.value)
-                    }
-                    placeholder="Nhap ten hien thi"
-                    disabled={isUploading}
-                  />
-                  <button
-                    type="button"
-                    className="btn draft-remove"
-                    onClick={() => removePendingUpload(item.id)}
-                    disabled={isUploading}
-                  >
-                    Xoa
-                  </button>
-                </div>
+            <article className="fun-card challenge-card">
+              <h3>Challenge bựa</h3>
+              <p className="challenge-text">{partyChallenge}</p>
+              <div className="button-row fun-actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={spinPartyChallenge}
+                >
+                  Quay challenge
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={triggerEmojiRain}
+                >
+                  Emoji rain
+                </button>
               </div>
-            ))}
+            </article>
           </div>
-        ) : null}
+        </section>
 
-        <div className="media-toolbar">
-          <div className="media-stats">
-            <span className="media-stat">
-              <strong>{mediaCounts.total}</strong> Tong
-            </span>
-            <span className="media-stat">
-              <strong>{mediaCounts.images}</strong> Anh
-            </span>
-            <span className="media-stat">
-              <strong>{mediaCounts.videos}</strong> Video
-            </span>
-          </div>
+        <section className="panel wish-board">
+          <div className="wish-board-layout">
+            <div className="wish-board-main">
+              <div className="wish-board-head">
+                <h2>Gui loi chuc den Dang Quang</h2>
+                <p>
+                  Ban dang xem va quan ly loi chuc cua rieng minh:{" "}
+                  <strong>@{visitorName}</strong>
+                </p>
+              </div>
 
-          <div className="media-controls">
-            <input
-              type="search"
-              className="media-search-input"
-              placeholder="Tim theo ten file hoac user..."
-              value={mediaSearch}
-              onChange={(event) => setMediaSearch(event.target.value)}
-            />
+              <div className="wish-system-grid">
+                <div className="wish-module wish-compose-module">
+                  <div className="wish-module-head">
+                    <h3>Composer</h3>
+                    <span>Tao loi chuc</span>
+                  </div>
 
-            <div className="media-filter-group">
-              <button
-                type="button"
-                className={`media-filter-btn ${mediaFilter === "all" ? "active" : ""}`}
-                onClick={() => setMediaFilter("all")}
-              >
-                Tat ca
-              </button>
-              <button
-                type="button"
-                className={`media-filter-btn ${mediaFilter === "image" ? "active" : ""}`}
-                onClick={() => setMediaFilter("image")}
-              >
-                Anh
-              </button>
-              <button
-                type="button"
-                className={`media-filter-btn ${mediaFilter === "video" ? "active" : ""}`}
-                onClick={() => setMediaFilter("video")}
-              >
-                Video
-              </button>
-            </div>
-
-            <div className="media-sort-group">
-              <select
-                className="media-sort-select"
-                value={mediaSort}
-                onChange={(event) => setMediaSort(event.target.value)}
-              >
-                <option value="latest">Moi nhat</option>
-                <option value="oldest">Cu nhat</option>
-                <option value="name-asc">Ten A-Z</option>
-                <option value="name-desc">Ten Z-A</option>
-              </select>
-
-              <button
-                type="button"
-                className="media-density-btn"
-                onClick={() => setIsCompactMedia((prev) => !prev)}
-              >
-                {isCompactMedia ? "Che do rong" : "Che do gon"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {displayedMedia.length === 0 ? (
-          <div className="media-empty">
-            <p>Khong co media phu hop voi bo loc hien tai.</p>
-            <small>Thu doi bo loc hoac tim kiem keyword khac.</small>
-          </div>
-        ) : (
-          <div className="media-grid-shell">
-            <div className={`media-grid ${isCompactMedia ? "compact" : ""}`}>
-              {displayedMedia.map((item) => {
-                const isDeleting = deletingMediaIds.includes(item.id);
-                const isOwnUpload =
-                  Boolean(item.uploadedBy) && item.uploadedBy === visitorName;
-
-                return (
-                  <figure
-                    key={item.id}
-                    className={`media-card previewable ${isOwnUpload ? "deletable" : ""}`}
-                  >
-                    {isOwnUpload ? (
+                  <div className="wish-presets">
+                    {WISH_TEMPLATES.map((template) => (
                       <button
+                        key={template}
                         type="button"
-                        className="media-card-delete"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          handleDeleteUploadedMedia(item);
-                        }}
-                        disabled={isDeleting}
+                        className="wish-chip"
+                        onClick={() => appendWishTemplate(template)}
+                        disabled={isSendingWish}
                       >
-                        {isDeleting ? "Dang xoa" : "Xoa"}
+                        {template}
                       </button>
-                    ) : null}
+                    ))}
 
                     <button
                       type="button"
-                      className="preview-trigger"
-                      onClick={() => openMediaPreview(item.id)}
-                      aria-label={`Xem ${item.type === "video" ? "video" : "anh"} ${item.name}`}
+                      className="wish-chip random"
+                      onClick={applyRandomWish}
+                      disabled={isSendingWish}
                     >
-                      {item.type === "video" ? (
-                        <>
-                          <video
-                            src={item.src}
-                            muted
-                            playsInline
-                            preload="metadata"
-                          />
-                          <span className="media-video-badge">Xem video</span>
-                        </>
-                      ) : (
-                        <img src={item.src} alt={item.name} loading="lazy" />
-                      )}
+                      Random bua
                     </button>
+                  </div>
 
-                    <figcaption>
-                      <span>{item.name}</span>
-                      <small>
-                        {item.type === "video" ? "Video" : "Anh"}
-                        {item.uploadedBy ? ` • by @${item.uploadedBy}` : ""}
-                      </small>
-                    </figcaption>
-                  </figure>
-                );
-              })}
+                  <form className="wish-form" onSubmit={handleSendWish}>
+                    <textarea
+                      value={wishDraft}
+                      onChange={(event) => setWishDraft(event.target.value)}
+                      maxLength={500}
+                      placeholder="Viet loi chuc cua ban..."
+                      disabled={isSendingWish}
+                    />
+                    <div className="wish-form-actions">
+                      <button
+                        type="submit"
+                        className="btn primary"
+                        disabled={isSendingWish}
+                      >
+                        {isSendingWish ? "Dang gui..." : "Gui loi chuc"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={refreshWishData}
+                        disabled={isLoadingWishes || isSendingWish}
+                      >
+                        {isLoadingWishes ? "Dang tai..." : "Tai lai loi chuc"}
+                      </button>
+                    </div>
+                  </form>
+
+                  {wishMessage ? (
+                    <p className="upload-status">{wishMessage}</p>
+                  ) : null}
+                  {wishError ? (
+                    <p className="upload-status error">{wishError}</p>
+                  ) : null}
+                </div>
+
+                <div className="wish-module wish-manager-module">
+                  <div className="wish-module-head">
+                    <h3>Manager</h3>
+                    <span>Search - Sort - Page</span>
+                  </div>
+
+                  <div className="wish-manager-toolbar">
+                    <input
+                      type="search"
+                      className="wish-search-input"
+                      placeholder="Tim noi dung loi chuc..."
+                      value={wishSearch}
+                      onChange={(event) => setWishSearch(event.target.value)}
+                    />
+
+                    <select
+                      className="wish-sort-select"
+                      value={wishSort}
+                      onChange={(event) => setWishSort(event.target.value)}
+                    >
+                      <option value="latest">Moi nhat</option>
+                      <option value="oldest">Cu nhat</option>
+                      <option value="longest">Dai nhat</option>
+                      <option value="shortest">Ngan nhat</option>
+                    </select>
+                  </div>
+
+                  <div className="wish-list-shell">
+                    <div className="wish-list-head">
+                      <strong>Loi chuc cua ban</strong>
+                      <span>{wishRangeLabel}</span>
+                    </div>
+
+                    <div className="wish-list" ref={wishListRef}>
+                      {managedWishes.length === 0 && !isLoadingWishes ? (
+                        <p className="wish-empty">
+                          {wishSearch.trim()
+                            ? "Khong tim thay loi chuc phu hop voi tu khoa nay."
+                            : "Ban chua gui loi chuc nao."}
+                        </p>
+                      ) : null}
+
+                      {pagedWishes.map((item) => {
+                        const isEditing = editingWishId === item.id;
+                        const isUpdating = updatingWishIds.includes(item.id);
+                        const isDeleting = deletingWishIds.includes(item.id);
+
+                        return (
+                          <article key={item.id} className="wish-item">
+                            {isEditing ? (
+                              <>
+                                <textarea
+                                  className="wish-edit-input"
+                                  value={editingWishDraft}
+                                  onChange={(event) =>
+                                    setEditingWishDraft(event.target.value)
+                                  }
+                                  maxLength={500}
+                                  disabled={isUpdating}
+                                />
+                                <div className="wish-item-actions">
+                                  <button
+                                    type="button"
+                                    className="btn primary"
+                                    onClick={() => handleSaveWishEdit(item.id)}
+                                    disabled={isUpdating}
+                                  >
+                                    {isUpdating ? "Dang luu..." : "Luu"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={handleCancelEditWish}
+                                    disabled={isUpdating}
+                                  >
+                                    Huy
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <p
+                                  className="wish-content-text"
+                                  title={item.content}
+                                >
+                                  {item.content}
+                                </p>
+                                <p className="wish-meta">
+                                  {formatWishDate(item.createdAt)}
+                                </p>
+                                <div className="wish-item-actions">
+                                  <button
+                                    type="button"
+                                    className="btn"
+                                    onClick={() => handleStartEditWish(item)}
+                                    disabled={isDeleting}
+                                  >
+                                    Sua
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn wish-danger"
+                                    onClick={() => handleDeleteWish(item)}
+                                    disabled={isDeleting}
+                                  >
+                                    {isDeleting ? "Dang xoa..." : "Xoa"}
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+
+                    <div className="wish-pagination">
+                      <button
+                        type="button"
+                        className="btn wish-page-btn"
+                        onClick={() =>
+                          setWishPage((prev) => Math.max(1, prev - 1))
+                        }
+                        disabled={currentWishPage === 1}
+                      >
+                        Truoc
+                      </button>
+                      <p>
+                        Trang {currentWishPage}/{wishPageCount} •{" "}
+                        {wishes.length} tong
+                      </p>
+                      <button
+                        type="button"
+                        className="btn wish-page-btn"
+                        onClick={() =>
+                          setWishPage((prev) =>
+                            Math.min(wishPageCount, prev + 1),
+                          )
+                        }
+                        disabled={currentWishPage === wishPageCount}
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <aside className="wish-credits" style={{ marginTop: 70 }}>
+              <p className="wish-credits-title">Credit loi chuc cong dong</p>
+              <p className="wish-credits-meta">
+                {communityWishes.length} loi chuc tu moi nguoi
+              </p>
+              <div className="wish-credits-window">
+                <div
+                  className="wish-credits-track animated"
+                  style={{ "--credit-duration": creditAnimationDuration }}
+                >
+                  {creditLoopWishes.map((item) => (
+                    <p
+                      key={`${item.id}-${item.loopKey}`}
+                      className="wish-credit-line"
+                    >
+                      <span>{item.content}</span>
+                      <small>— {item.senderName}</small>
+                    </p>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section className="panel media-panel">
+          <div className="media-header">
+            <div className="media-intro">
+              <h2>Album cua Quang</h2>
+              <p className="media-guide">
+                Bao Nhiêu Hoa Anh Chỉ Chọn Một Cành Bao Nhiêu Người Anh Chỉ Chọn
+                Mỗi Em
+              </p>
+
+              <a
+                href="https://www.facebook.com/photo?fbid=1062066317902870&set=a.115345732574938"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="media-intro-link"
+              >
+                nữ hoàng băng giá đụng đâu cứng đó
+              </a>
             </div>
           </div>
-        )}
-      </section>
 
-      {activePreviewMedia ? (
-        <div
-          className="media-lightbox"
-          role="dialog"
-          aria-modal="true"
-          aria-label={`Dang xem ${activePreviewMedia.type === "video" ? "video" : "anh"} ${activePreviewMedia.name}`}
-          onClick={closeMediaPreview}
-        >
-          <button
-            type="button"
-            className="lightbox-close"
-            onClick={closeMediaPreview}
-            aria-label="Dong xem media"
-          >
-            Dong
-          </button>
-
-          {displayedMedia.length > 1 ? (
-            <>
+          <div className="media-upload-zone">
+            <div className="upload-actions">
+              <label
+                htmlFor="media-upload"
+                className="btn action-btn primary as-label"
+              >
+                <span className="action-step">1</span>
+                <span className="action-copy">
+                  <strong>Chon file</strong>
+                  <small>Anh hoac video</small>
+                </span>
+              </label>
+              <input
+                id="media-upload"
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                disabled={isUploading}
+                onChange={handleFilesSelected}
+                ref={uploadInputRef}
+              />
               <button
                 type="button"
-                className="lightbox-nav prev"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  showPrevMedia();
-                }}
-                aria-label="Media truoc"
+                className="btn action-btn primary"
+                onClick={handleUpload}
+                disabled={isUploading || pendingUploads.length === 0}
               >
-                {"<"}
+                <span className="action-step">3</span>
+                <span className="action-copy">
+                  <strong>
+                    {isUploading ? "Dang tai len" : "Tai len album"}
+                  </strong>
+                  <small>
+                    {pendingUploads.length > 0
+                      ? `${pendingUploads.length} file dang cho`
+                      : "Can chon file truoc"}
+                  </small>
+                </span>
               </button>
               <button
                 type="button"
-                className="lightbox-nav next"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  showNextMedia();
-                }}
-                aria-label="Media tiep theo"
+                className="btn action-btn ghost"
+                onClick={refreshAlbum}
+                disabled={isLoadingMedia || isUploading}
               >
-                {">"}
+                <span className="action-step">R</span>
+                <span className="action-copy">
+                  <strong>
+                    {isLoadingMedia ? "Dang tai lai" : "Tai lai album"}
+                  </strong>
+                  <small>Dong bo tu server</small>
+                </span>
               </button>
-            </>
+            </div>
+
+            <p
+              className={`upload-selection ${pendingUploads.length === 0 ? "muted" : ""}`}
+            >
+              {pendingUploads.length > 0
+                ? `Buoc 2: Dat ten cho ${pendingUploads.length} file ben duoi.`
+                : "Chua co file nao duoc chon."}
+            </p>
+          </div>
+
+          {uploadMessage ? (
+            <p className="upload-status">{uploadMessage}</p>
+          ) : null}
+          {uploadError ? (
+            <p className="upload-status error">{uploadError}</p>
           ) : null}
 
-          <figure
-            className="lightbox-figure"
-            onClick={(event) => event.stopPropagation()}
-          >
-            {activePreviewMedia.type === "video" ? (
-              <video
-                src={activePreviewMedia.src}
-                controls
-                autoPlay
-                playsInline
-                preload="metadata"
-              />
-            ) : (
-              <img src={activePreviewMedia.src} alt={activePreviewMedia.name} />
-            )}
-            <figcaption>
-              <span>{activePreviewMedia.name}</span>
-              <span>
-                {activePreviewIndex + 1}/{displayedMedia.length}
+          {pendingUploads.length > 0 ? (
+            <div className="upload-drafts">
+              <div className="upload-drafts-head">
+                <strong>Buoc 2: Dat ten hien thi cho tung file</strong>
+                <button
+                  type="button"
+                  className="btn draft-clear"
+                  onClick={clearPendingUploads}
+                  disabled={isUploading}
+                >
+                  Xoa danh sach
+                </button>
+              </div>
+
+              {pendingUploads.map((item, index) => (
+                <div key={item.id} className="draft-item">
+                  <div className="draft-origin">
+                    <span className="draft-index">{index + 1}</span>
+                    <span title={item.file.name}>{item.file.name}</span>
+                  </div>
+                  <div className="draft-item-editor">
+                    <input
+                      type="text"
+                      value={item.displayName}
+                      maxLength={120}
+                      onChange={(event) =>
+                        updatePendingUploadName(item.id, event.target.value)
+                      }
+                      placeholder="Nhap ten hien thi"
+                      disabled={isUploading}
+                    />
+                    <button
+                      type="button"
+                      className="btn draft-remove"
+                      onClick={() => removePendingUpload(item.id)}
+                      disabled={isUploading}
+                    >
+                      Xoa
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div className="media-toolbar">
+            <div className="media-stats">
+              <span className="media-stat">
+                <strong>{mediaCounts.total}</strong> Tong
               </span>
-            </figcaption>
-          </figure>
-        </div>
-      ) : null}
-    </div>
+              <span className="media-stat">
+                <strong>{mediaCounts.images}</strong> Anh
+              </span>
+              <span className="media-stat">
+                <strong>{mediaCounts.videos}</strong> Video
+              </span>
+            </div>
+
+            <div className="media-controls">
+              <input
+                type="search"
+                className="media-search-input"
+                placeholder="Tim theo ten file hoac user..."
+                value={mediaSearch}
+                onChange={(event) => setMediaSearch(event.target.value)}
+              />
+
+              <div className="media-filter-group">
+                <button
+                  type="button"
+                  className={`media-filter-btn ${mediaFilter === "all" ? "active" : ""}`}
+                  onClick={() => setMediaFilter("all")}
+                >
+                  Tat ca
+                </button>
+                <button
+                  type="button"
+                  className={`media-filter-btn ${mediaFilter === "image" ? "active" : ""}`}
+                  onClick={() => setMediaFilter("image")}
+                >
+                  Anh
+                </button>
+                <button
+                  type="button"
+                  className={`media-filter-btn ${mediaFilter === "video" ? "active" : ""}`}
+                  onClick={() => setMediaFilter("video")}
+                >
+                  Video
+                </button>
+              </div>
+
+              <div className="media-sort-group">
+                <select
+                  className="media-sort-select"
+                  value={mediaSort}
+                  onChange={(event) => setMediaSort(event.target.value)}
+                >
+                  <option value="latest">Moi nhat</option>
+                  <option value="oldest">Cu nhat</option>
+                  <option value="name-asc">Ten A-Z</option>
+                  <option value="name-desc">Ten Z-A</option>
+                </select>
+
+                <button
+                  type="button"
+                  className="media-density-btn"
+                  onClick={() => setIsCompactMedia((prev) => !prev)}
+                >
+                  {isCompactMedia ? "Che do rong" : "Che do gon"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {displayedMedia.length === 0 ? (
+            <div className="media-empty">
+              <p>Khong co media phu hop voi bo loc hien tai.</p>
+              <small>Thu doi bo loc hoac tim kiem keyword khac.</small>
+            </div>
+          ) : (
+            <div className="media-grid-shell">
+              <div className={`media-grid ${isCompactMedia ? "compact" : ""}`}>
+                {displayedMedia.map((item) => {
+                  const isDeleting = deletingMediaIds.includes(item.id);
+                  const isOwnUpload =
+                    Boolean(item.uploadedBy) && item.uploadedBy === visitorName;
+
+                  return (
+                    <figure
+                      key={item.id}
+                      className={`media-card previewable ${isOwnUpload ? "deletable" : ""}`}
+                    >
+                      {isOwnUpload ? (
+                        <button
+                          type="button"
+                          className="media-card-delete"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteUploadedMedia(item);
+                          }}
+                          disabled={isDeleting}
+                        >
+                          {isDeleting ? "Dang xoa" : "Xoa"}
+                        </button>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        className="preview-trigger"
+                        onClick={() => openMediaPreview(item.id)}
+                        aria-label={`Xem ${item.type === "video" ? "video" : "anh"} ${item.name}`}
+                      >
+                        {item.type === "video" ? (
+                          <>
+                            <video
+                              src={item.src}
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                            <span className="media-video-badge">Xem video</span>
+                          </>
+                        ) : (
+                          <img src={item.src} alt={item.name} loading="lazy" />
+                        )}
+                      </button>
+
+                      <figcaption>
+                        <span>{item.name}</span>
+                        <small>
+                          {item.type === "video" ? "Video" : "Anh"}
+                          {item.uploadedBy ? ` • by @${item.uploadedBy}` : ""}
+                        </small>
+                      </figcaption>
+                    </figure>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {activePreviewMedia ? (
+          <div
+            className="media-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Dang xem ${activePreviewMedia.type === "video" ? "video" : "anh"} ${activePreviewMedia.name}`}
+            onClick={closeMediaPreview}
+          >
+            <button
+              type="button"
+              className="lightbox-close"
+              onClick={closeMediaPreview}
+              aria-label="Dong xem media"
+            >
+              Dong
+            </button>
+
+            {displayedMedia.length > 1 ? (
+              <>
+                <button
+                  type="button"
+                  className="lightbox-nav prev"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    showPrevMedia();
+                  }}
+                  aria-label="Media truoc"
+                >
+                  {"<"}
+                </button>
+                <button
+                  type="button"
+                  className="lightbox-nav next"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    showNextMedia();
+                  }}
+                  aria-label="Media tiep theo"
+                >
+                  {">"}
+                </button>
+              </>
+            ) : null}
+
+            <figure
+              className="lightbox-figure"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {activePreviewMedia.type === "video" ? (
+                <video
+                  src={activePreviewMedia.src}
+                  controls
+                  autoPlay
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <img
+                  src={activePreviewMedia.src}
+                  alt={activePreviewMedia.name}
+                />
+              )}
+              <figcaption>
+                <span>{activePreviewMedia.name}</span>
+                <span>
+                  {activePreviewIndex + 1}/{displayedMedia.length}
+                </span>
+              </figcaption>
+            </figure>
+          </div>
+        ) : null}
+      </div>
+      {musicWidget}
+    </>
   );
 }
 

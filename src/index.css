@@ -1,0 +1,68 @@
+@import url('https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Sriracha&display=swap');
+
+:root {
+  --bg-a: #f6f2ea;
+  --bg-b: #e7ece5;
+  --bg-c: #efe4dc;
+  --line: rgba(86, 63, 76, 0.18);
+  --line-strong: rgba(86, 63, 76, 0.32);
+  --text-main: #2f2533;
+  --text-soft: #655668;
+
+  font-family: 'Be Vietnam Pro', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-main);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(232, 201, 177, 0.6), transparent 32%),
+    radial-gradient(circle at 86% 10%, rgba(196, 212, 195, 0.5), transparent 29%),
+    radial-gradient(circle at 84% 84%, rgba(209, 187, 206, 0.38), transparent 30%),
+    linear-gradient(130deg, var(--bg-a), var(--bg-b) 48%, var(--bg-c));
+  color: var(--text-main);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--text-main);
+  line-height: 1.2;
+  margin: 0;
+}
+
+h1 {
+  font-family: 'Sriracha', cursive;
+  font-size: clamp(2rem, 3.7vw, 3.5rem);
+  margin-top: 0.35rem;
+}
+
+h2 {
+  font-size: clamp(1.1rem, 2.2vw, 1.55rem);
+}
+
+p {
+  margin: 0;
+  color: var(--text-soft);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}

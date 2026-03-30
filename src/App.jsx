@@ -293,7 +293,7 @@ function App() {
     setUploadMessage("");
 
     try {
-      const response = await fetch(apiUrl("/api/media/uploads"), {
+      const response = await fetch(apiUrl("/api/media"), {
         method: "POST",
         body: formData,
       });

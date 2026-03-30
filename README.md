@@ -31,8 +31,13 @@ npm run dev
 
 - `GET /api/health`
 - `GET /api/media`
-- `GET /api/media/file/:id` (tra file binary luu trong Mongo)
-- `POST /api/media/upload` (form-data key: `files`, cho phep nhieu file)
+- `POST /api/media` (form-data key: `files`, cho phep nhieu file)
+- `GET /api/file?id=<mediaId>` (tra file binary luu trong Mongo)
+
+Endpoint cu van giu de tuong thich nguoc:
+
+- `POST /api/media/upload`
+- `GET /api/media/file/:id`
 
 Che do luu file:
 

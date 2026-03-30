@@ -141,7 +141,10 @@ const toClientMedia = (doc) => ({
   id: String(doc._id),
   name: doc.originalName,
   type: doc.mediaType,
-  src: doc.url,
+  src:
+    doc.storageProvider === "mongo"
+      ? `/api/file?id=${doc._id}`
+      : doc.url,
   createdAt: doc.createdAt,
 });
 
@@ -175,7 +178,31 @@ app.get("/api/media/file/:id", async (req, res, next) => {
   }
 });
 
-app.post("/api/media/upload", uploadMany, async (req, res, next) => {
+app.get("/api/file", async (req, res, next) => {
+  try {
+    const itemId = String(req.query.id || "").trim();
+
+    if (!itemId) {
+      res.status(400).json({ message: "Missing media id" });
+      return;
+    }
+
+    const item = await Media.findById(itemId).select("bufferData mimeType");
+
+    if (!item || !item.bufferData) {
+      res.status(404).json({ message: "Media not found" });
+      return;
+    }
+
+    res.setHeader("Content-Type", item.mimeType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(item.bufferData);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const handleUploadMedia = async (req, res, next) => {
   try {
     const files = req.files || [];
     if (files.length === 0) {
@@ -190,7 +217,7 @@ app.post("/api/media/upload", uploadMany, async (req, res, next) => {
           _id: documentId,
           originalName: file.originalname,
           filename: buildSafeFilename(file.originalname),
-          url: `/api/media/file/${documentId}`,
+          url: `/api/file?id=${documentId}`,
           mimeType: file.mimetype,
           mediaType: file.mimetype.startsWith("video/") ? "video" : "image",
           size: file.size,
@@ -215,7 +242,12 @@ app.post("/api/media/upload", uploadMany, async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-});
+};
+
+app.post("/api/media", uploadMany, handleUploadMedia);
+
+// Legacy route for backward compatibility with older frontend builds.
+app.post("/api/media/upload", uploadMany, handleUploadMedia);
 
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {

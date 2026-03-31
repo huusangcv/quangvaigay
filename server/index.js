@@ -8,6 +8,7 @@ import { fileURLToPath } from "url";
 import fs from "fs";
 
 import Media from "./models/Media.js";
+import Song from "./models/Song.js";
 import Wish from "./models/Wish.js";
 
 dotenv.config();
@@ -95,7 +96,8 @@ const buildSafeFilename = (originalName) => {
     .replace(/-+/g, "-")
     .slice(0, 80);
 
-  const ext = path.extname(safeBase) || path.extname(originalName).toLowerCase();
+  const ext =
+    path.extname(safeBase) || path.extname(originalName).toLowerCase();
   const nameOnly = path.basename(safeBase, ext) || "media";
 
   return `${Date.now()}-${Math.round(Math.random() * 1e9)}-${nameOnly}${ext}`;
@@ -111,7 +113,8 @@ const storage = multer.diskStorage({
 });
 
 const maxFileSize = Number(
-  process.env.MAX_FILE_SIZE || (isVercelRuntime ? 4 * 1024 * 1024 : 100 * 1024 * 1024),
+  process.env.MAX_FILE_SIZE ||
+    (isVercelRuntime ? 4 * 1024 * 1024 : 100 * 1024 * 1024),
 );
 
 const multerOptions = {
@@ -120,7 +123,8 @@ const multerOptions = {
     files: 20,
   },
   fileFilter: (_req, file, callback) => {
-    const isAccepted = file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/");
+    const isAccepted =
+      file.mimetype.startsWith("image/") || file.mimetype.startsWith("video/");
     if (isAccepted) {
       callback(null, true);
       return;
@@ -131,7 +135,46 @@ const multerOptions = {
 };
 
 const uploadLocal = multer({ ...multerOptions, storage });
-const uploadInMemory = multer({ ...multerOptions, storage: multer.memoryStorage() });
+const uploadInMemory = multer({
+  ...multerOptions,
+  storage: multer.memoryStorage(),
+});
+
+const isMp3File = (file) => {
+  const ext = path.extname(file.originalname || "").toLowerCase();
+  const mime = String(file.mimetype || "").toLowerCase();
+
+  if (ext !== ".mp3") {
+    return false;
+  }
+
+  return (
+    mime === "audio/mpeg" ||
+    mime === "audio/mp3" ||
+    mime === "application/octet-stream"
+  );
+};
+
+const songMulterOptions = {
+  limits: {
+    fileSize: maxFileSize,
+    files: 1,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (isMp3File(file)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error("Only .mp3 files are allowed"));
+  },
+};
+
+const uploadSongLocal = multer({ ...songMulterOptions, storage });
+const uploadSongInMemory = multer({
+  ...songMulterOptions,
+  storage: multer.memoryStorage(),
+});
 
 const uploadMany = (req, res, next) => {
   const upload = isVercelRuntime ? uploadInMemory : uploadLocal;
@@ -139,7 +182,10 @@ const uploadMany = (req, res, next) => {
 };
 
 const USERNAME_REGEX = /^[a-zA-Z]+$/;
-const parseUserName = (value) => String(value || "").trim().slice(0, 80);
+const parseUserName = (value) =>
+  String(value || "")
+    .trim()
+    .slice(0, 80);
 
 const parseDisplayNames = (rawValue) => {
   if (!rawValue || typeof rawValue !== "string") {
@@ -158,15 +204,17 @@ const parseDisplayNames = (rawValue) => {
   }
 };
 
+const parseSongTitle = (value) =>
+  String(value || "")
+    .trim()
+    .slice(0, 120);
+
 const toClientMedia = (doc) => ({
   id: String(doc._id),
   name: doc.originalName,
   uploadedBy: doc.uploadedBy || "",
   type: doc.mediaType,
-  src:
-    doc.storageProvider === "mongo"
-      ? `/api/file?id=${doc._id}`
-      : doc.url,
+  src: doc.storageProvider === "mongo" ? `/api/file?id=${doc._id}` : doc.url,
   createdAt: doc.createdAt,
 });
 
@@ -174,6 +222,14 @@ const toClientWish = (doc) => ({
   id: String(doc._id),
   senderName: doc.senderName,
   content: doc.content,
+  createdAt: doc.createdAt,
+});
+
+const toClientSong = (doc) => ({
+  id: String(doc._id),
+  title: doc.title,
+  uploadedBy: doc.uploadedBy,
+  src: doc.storageProvider === "mongo" ? `/api/file?id=${doc._id}` : doc.url,
   createdAt: doc.createdAt,
 });
 
@@ -185,6 +241,15 @@ app.get("/api/media", async (_req, res, next) => {
   try {
     const mediaItems = await Media.find().sort({ createdAt: -1 }).lean();
     res.json({ items: mediaItems.map(toClientMedia) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/api/songs", async (_req, res, next) => {
+  try {
+    const songs = await Song.find().sort({ createdAt: -1 }).lean();
+    res.json({ items: songs.map(toClientSong) });
   } catch (error) {
     next(error);
   }
@@ -217,7 +282,9 @@ app.get("/api/wishes", async (_req, res, next) => {
 app.post("/api/wishes", async (req, res, next) => {
   try {
     const senderName = parseUserName(req.body?.senderName);
-    const content = String(req.body?.content || "").trim().slice(0, 500);
+    const content = String(req.body?.content || "")
+      .trim()
+      .slice(0, 500);
 
     if (!senderName) {
       res.status(400).json({ message: "Missing sender name" });
@@ -245,7 +312,9 @@ app.put("/api/wishes", async (req, res, next) => {
   try {
     const wishId = String(req.query.id || "").trim();
     const senderName = parseUserName(req.body?.senderName);
-    const content = String(req.body?.content || "").trim().slice(0, 500);
+    const content = String(req.body?.content || "")
+      .trim()
+      .slice(0, 500);
 
     if (!wishId || !mongoose.Types.ObjectId.isValid(wishId)) {
       res.status(400).json({ message: "Missing or invalid wish id" });
@@ -357,7 +426,9 @@ app.delete("/api/media", async (req, res, next) => {
 
 app.get("/api/media/file/:id", async (req, res, next) => {
   try {
-    const item = await Media.findById(req.params.id).select("bufferData mimeType");
+    const item = await Media.findById(req.params.id).select(
+      "bufferData mimeType",
+    );
 
     if (!item || !item.bufferData) {
       res.status(404).json({ message: "Media not found" });
@@ -381,7 +452,9 @@ app.get("/api/file", async (req, res, next) => {
       return;
     }
 
-    const item = await Media.findById(itemId).select("bufferData mimeType");
+    const item =
+      (await Media.findById(itemId).select("bufferData mimeType")) ||
+      (await Song.findById(itemId).select("bufferData mimeType"));
 
     if (!item || !item.bufferData) {
       res.status(404).json({ message: "Media not found" });
@@ -451,7 +524,67 @@ const handleUploadMedia = async (req, res, next) => {
   }
 };
 
+const uploadSingleSong = (req, res, next) => {
+  const upload = isVercelRuntime ? uploadSongInMemory : uploadSongLocal;
+  upload.single("file")(req, res, next);
+};
+
+const handleUploadSong = async (req, res, next) => {
+  try {
+    const file = req.file;
+    const uploaderName = parseUserName(req.body?.uploaderName);
+    const title = parseSongTitle(req.body?.title || req.file?.originalname);
+
+    if (!file) {
+      res.status(400).json({ message: "No mp3 file uploaded" });
+      return;
+    }
+
+    if (!uploaderName || !USERNAME_REGEX.test(uploaderName)) {
+      res.status(400).json({ message: "Missing or invalid uploader name" });
+      return;
+    }
+
+    if (!title) {
+      res.status(400).json({ message: "Missing song title" });
+      return;
+    }
+
+    let created;
+
+    if (isVercelRuntime) {
+      const documentId = new mongoose.Types.ObjectId();
+      created = await Song.create({
+        _id: documentId,
+        title,
+        uploadedBy: uploaderName,
+        filename: buildSafeFilename(file.originalname),
+        url: `/api/file?id=${documentId}`,
+        mimeType: file.mimetype,
+        size: file.size,
+        storageProvider: "mongo",
+        bufferData: file.buffer,
+      });
+    } else {
+      created = await Song.create({
+        title,
+        uploadedBy: uploaderName,
+        filename: file.filename,
+        url: `/api/uploads/${file.filename}`,
+        mimeType: file.mimetype,
+        size: file.size,
+        storageProvider: "local",
+      });
+    }
+
+    res.status(201).json({ item: toClientSong(created) });
+  } catch (error) {
+    next(error);
+  }
+};
+
 app.post("/api/media", uploadMany, handleUploadMedia);
+app.post("/api/songs", uploadSingleSong, handleUploadSong);
 
 // Legacy route for backward compatibility with older frontend builds.
 app.post("/api/media/upload", uploadMany, handleUploadMedia);

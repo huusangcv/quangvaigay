@@ -104,6 +104,7 @@ const DEFAULT_CREDIT_WISHES = [
 ];
 
 const WISH_PAGE_SIZE = 3;
+const MUSIC_PAGE_SIZE = 6;
 
 const BASE_MEDIA = [
   {
@@ -143,6 +144,14 @@ const buildDefaultDisplayName = (fileName) => {
 const formatFileSizeLimitMb = (bytes) => {
   const value = Math.round((bytes / (1024 * 1024)) * 10) / 10;
   return Number.isInteger(value) ? String(value) : String(value);
+};
+
+const formatAudioClock = (seconds) => {
+  const safeSeconds = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+  const total = Math.floor(safeSeconds);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 };
 
 const buildBurst = (x, y, text) => {
@@ -251,6 +260,15 @@ const BIRTHDAY_MUSIC_BLUEPRINTS = [
       { note: "REST", beats: 0.25 },
       { note: "G4", beats: 0.75 },
     ],
+  },
+];
+
+const BIRTHDAY_STATIC_PLAYLIST = [
+  {
+    id: "birthday-remix",
+    title: "na na na anh domixi Remix",
+    artist: "DJ Ban Than",
+    src: "/media/tiktok_audio.mp3",
   },
 ];
 
@@ -380,9 +398,20 @@ function App() {
   const [isCompactMedia, setIsCompactMedia] = useState(false);
   const [activePreviewMediaId, setActivePreviewMediaId] = useState("");
   const [musicTrackIndex, setMusicTrackIndex] = useState(0);
+  const [musicPage, setMusicPage] = useState(1);
   const [isMusicPlaying, setIsMusicPlaying] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0.62);
+  const [musicElapsedSeconds, setMusicElapsedSeconds] = useState(0);
+  const [musicDurationSeconds, setMusicDurationSeconds] = useState(0);
   const [musicNotice, setMusicNotice] = useState("");
+  const [isSongUploadPanelOpen, setIsSongUploadPanelOpen] = useState(false);
+  const [serverSongs, setServerSongs] = useState([]);
+  const [isLoadingSongs, setIsLoadingSongs] = useState(false);
+  const [isUploadingSong, setIsUploadingSong] = useState(false);
+  const [songUploadFile, setSongUploadFile] = useState(null);
+  const [songTitleDraft, setSongTitleDraft] = useState("");
+  const [songUploadError, setSongUploadError] = useState("");
+  const [songUploadMessage, setSongUploadMessage] = useState("");
 
   const allMedia = useMemo(
     () => [...BASE_MEDIA, ...serverMedia],
@@ -481,30 +510,62 @@ function App() {
 
   const birthdayPlaylist = useMemo(
     () => [
-      // {
-      //   id: "birthday-funny-1",
-      //   title: "Bua Birthday Bounce",
-      //   artist: "Party Bot",
-      //   src: "/media/birthday_funny_1.mp3",
-      // },
-      // {
-      //   id: "birthday-funny-2",
-      //   title: "Quang Parade Beat",
-      //   artist: "Laugh Machine",
-      //   src: "/media/birthday_funny_2.mp3",
-      // },
-      {
-        id: "birthday-remix",
-        title: "na na na anh domixi Remix",
-        artist: "DJ Ban Than",
-        src: "/media/tiktok_audio.mp3",
-      },
+      ...BIRTHDAY_STATIC_PLAYLIST,
+      ...serverSongs.map((item) => ({
+        id: `song-${item.id}`,
+        title: item.title,
+        artist: item.uploadedBy
+          ? `Uploaded by ${item.uploadedBy}`
+          : "User upload",
+        src: item.src,
+      })),
       // ...generatedMusicTracks,
     ],
-    [generatedMusicTracks],
+    [serverSongs],
   );
 
   const activeMusicTrack = birthdayPlaylist[musicTrackIndex] || null;
+
+  const musicPageCount = useMemo(
+    () => Math.max(1, Math.ceil(birthdayPlaylist.length / MUSIC_PAGE_SIZE)),
+    [birthdayPlaylist.length],
+  );
+
+  const currentMusicPage = Math.min(musicPage, musicPageCount);
+
+  const pagedMusicTracks = useMemo(() => {
+    const startIndex = (currentMusicPage - 1) * MUSIC_PAGE_SIZE;
+    return birthdayPlaylist
+      .slice(startIndex, startIndex + MUSIC_PAGE_SIZE)
+      .map((track, offset) => ({
+        track,
+        index: startIndex + offset,
+      }));
+  }, [birthdayPlaylist, currentMusicPage]);
+
+  const musicRangeLabel = useMemo(() => {
+    if (birthdayPlaylist.length === 0) {
+      return "0/0";
+    }
+
+    const start = (currentMusicPage - 1) * MUSIC_PAGE_SIZE + 1;
+    const end = Math.min(
+      currentMusicPage * MUSIC_PAGE_SIZE,
+      birthdayPlaylist.length,
+    );
+    return `${start}-${end}/${birthdayPlaylist.length}`;
+  }, [birthdayPlaylist.length, currentMusicPage]);
+
+  const musicProgressPercent = useMemo(() => {
+    if (!musicDurationSeconds || musicDurationSeconds <= 0) {
+      return 0;
+    }
+
+    return Math.min(
+      100,
+      Math.max(0, (musicElapsedSeconds / musicDurationSeconds) * 100),
+    );
+  }, [musicDurationSeconds, musicElapsedSeconds]);
 
   const managedWishes = useMemo(() => {
     const normalizedQuery = wishSearch.trim().toLowerCase();
@@ -643,6 +704,25 @@ function App() {
       setWishPage(wishPageCount);
     }
   }, [wishPage, wishPageCount]);
+
+  useEffect(() => {
+    if (musicPage > musicPageCount) {
+      setMusicPage(musicPageCount);
+    }
+  }, [musicPage, musicPageCount]);
+
+  useEffect(() => {
+    if (birthdayPlaylist.length === 0) {
+      return;
+    }
+
+    const pageForActiveTrack =
+      Math.floor(musicTrackIndex / MUSIC_PAGE_SIZE) + 1;
+
+    if (pageForActiveTrack !== currentMusicPage) {
+      setMusicPage(pageForActiveTrack);
+    }
+  }, [birthdayPlaylist.length, currentMusicPage, musicTrackIndex]);
 
   useEffect(
     () => () => {
@@ -825,6 +905,42 @@ function App() {
   useEffect(() => {
     fetchServerMedia();
   }, [fetchServerMedia]);
+
+  const normalizeServerSongs = useCallback(
+    (items) =>
+      (items || []).map((item) => ({
+        ...item,
+        uploadedBy: item.uploadedBy || "",
+        src:
+          typeof item.src === "string" && item.src.startsWith("http")
+            ? item.src
+            : apiUrl(item.src || ""),
+      })),
+    [],
+  );
+
+  const fetchServerSongs = useCallback(async () => {
+    setIsLoadingSongs(true);
+    setSongUploadError("");
+
+    try {
+      const response = await fetch(apiUrl("/api/songs"));
+      if (!response.ok) {
+        throw new Error("Khong the tai danh sach nhac");
+      }
+
+      const data = await response.json();
+      setServerSongs(normalizeServerSongs(data.items));
+    } catch (error) {
+      setSongUploadError(error.message || "Loi ket noi backend");
+    } finally {
+      setIsLoadingSongs(false);
+    }
+  }, [normalizeServerSongs]);
+
+  useEffect(() => {
+    fetchServerSongs();
+  }, [fetchServerSongs]);
 
   const fetchWishes = useCallback(async () => {
     setIsLoadingWishes(true);
@@ -1254,6 +1370,87 @@ function App() {
     fetchServerMedia();
   };
 
+  const handleSongFileSelected = (event) => {
+    const file = event.target.files?.[0] || null;
+
+    setSongUploadError("");
+    setSongUploadMessage("");
+    setSongUploadFile(file);
+
+    if (file) {
+      setSongTitleDraft(buildDefaultDisplayName(file.name).slice(0, 120));
+    }
+  };
+
+  const handleUploadSong = async () => {
+    if (!songUploadFile) {
+      setSongUploadError("Hay chon 1 file mp3 truoc khi tai len.");
+      return;
+    }
+
+    if (!USERNAME_PATTERN.test(visitorName)) {
+      setSongUploadError("Ten dang nhap khong hop le de upload bai hat.");
+      return;
+    }
+
+    const ext = songUploadFile.name.toLowerCase().split(".").pop();
+    if (ext !== "mp3") {
+      setSongUploadError("Chi nhan file .mp3.");
+      return;
+    }
+
+    const title = songTitleDraft.trim().slice(0, 120);
+    if (!title) {
+      setSongUploadError("Nhap ten bai hat truoc khi upload.");
+      return;
+    }
+
+    const maxUploadMb = formatFileSizeLimitMb(CLIENT_UPLOAD_LIMIT_BYTES);
+    if (songUploadFile.size > CLIENT_UPLOAD_LIMIT_BYTES) {
+      setSongUploadError(
+        `File nhac qua gioi han ${maxUploadMb}MB. Vui long nen nho hon truoc khi upload.`,
+      );
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", songUploadFile);
+    formData.append("title", title);
+    formData.append("uploaderName", visitorName);
+
+    setIsUploadingSong(true);
+    setSongUploadError("");
+    setSongUploadMessage("");
+
+    try {
+      const response = await fetch(apiUrl("/api/songs"), {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await parseApiPayload(response);
+      if (!response.ok) {
+        throw new Error(data.message || "Upload bai hat that bai");
+      }
+
+      const createdItems = normalizeServerSongs(data.item ? [data.item] : []);
+      if (createdItems.length > 0) {
+        setServerSongs((prev) => [...createdItems, ...prev]);
+      } else {
+        fetchServerSongs();
+      }
+
+      setSongUploadMessage(`Da tai bai "${title}" len playlist.`);
+      setSongUploadFile(null);
+      setSongTitleDraft("");
+      setIsSongUploadPanelOpen(false);
+    } catch (error) {
+      setSongUploadError(error.message || "Upload bai hat that bai");
+    } finally {
+      setIsUploadingSong(false);
+    }
+  };
+
   const handleDeleteUploadedMedia = async (mediaItem) => {
     if (!mediaItem?.uploadedBy || mediaItem.uploadedBy !== visitorName) {
       setUploadError("Ban chi co the xoa file do chinh ban upload.");
@@ -1419,6 +1616,18 @@ function App() {
     setIsMusicPlaying(false);
   }, []);
 
+  const seekMusic = useCallback((event) => {
+    const nextSecond = Number(event.target.value);
+    const audioElement = musicAudioRef.current;
+
+    if (!audioElement || !Number.isFinite(nextSecond)) {
+      return;
+    }
+
+    audioElement.currentTime = nextSecond;
+    setMusicElapsedSeconds(nextSecond);
+  }, []);
+
   const playNextTrack = useCallback(() => {
     if (birthdayPlaylist.length === 0) {
       return;
@@ -1474,6 +1683,8 @@ function App() {
       return;
     }
 
+    setMusicElapsedSeconds(0);
+    setMusicDurationSeconds(0);
     audioElement.load();
     if (isMusicPlaying) {
       void playMusic();
@@ -1488,6 +1699,21 @@ function App() {
     if (!audioElement) {
       return undefined;
     }
+
+    const syncProgress = () => {
+      const duration =
+        Number.isFinite(audioElement.duration) && audioElement.duration > 0
+          ? audioElement.duration
+          : 0;
+      const current =
+        Number.isFinite(audioElement.currentTime) &&
+        audioElement.currentTime > 0
+          ? audioElement.currentTime
+          : 0;
+
+      setMusicDurationSeconds(duration);
+      setMusicElapsedSeconds(Math.min(current, duration || current));
+    };
 
     const handleEnded = () => {
       if (birthdayPlaylist.length === 0) {
@@ -1507,14 +1733,29 @@ function App() {
       setIsMusicPlaying(false);
     };
 
+    const handleTimeUpdate = () => {
+      syncProgress();
+    };
+
+    const handleMetadataLoaded = () => {
+      syncProgress();
+    };
+
     audioElement.addEventListener("ended", handleEnded);
     audioElement.addEventListener("play", handlePlay);
     audioElement.addEventListener("pause", handlePause);
+    audioElement.addEventListener("timeupdate", handleTimeUpdate);
+    audioElement.addEventListener("loadedmetadata", handleMetadataLoaded);
+    audioElement.addEventListener("durationchange", handleMetadataLoaded);
+    syncProgress();
 
     return () => {
       audioElement.removeEventListener("ended", handleEnded);
       audioElement.removeEventListener("play", handlePlay);
       audioElement.removeEventListener("pause", handlePause);
+      audioElement.removeEventListener("timeupdate", handleTimeUpdate);
+      audioElement.removeEventListener("loadedmetadata", handleMetadataLoaded);
+      audioElement.removeEventListener("durationchange", handleMetadataLoaded);
     };
   }, [birthdayPlaylist.length]);
 
@@ -1565,12 +1806,61 @@ function App() {
         <small>{activeMusicTrack.artist}</small>
       </p>
 
+      <div className="music-visual-wrap">
+        <div
+          className={`music-disc ${isMusicPlaying ? "spinning" : ""}`}
+          aria-hidden="true"
+        >
+          <div className="music-disc-center">
+            <span>{String(musicTrackIndex + 1).padStart(2, "0")}</span>
+          </div>
+        </div>
+
+        <div className="music-progress-wrap">
+          <div className="music-progress-clock">
+            <span>{formatAudioClock(musicElapsedSeconds)}</span>
+            <span>{formatAudioClock(musicDurationSeconds)}</span>
+          </div>
+
+          <label
+            className="music-progress-label"
+            htmlFor="music-progress-slider"
+          >
+            Tien trinh
+          </label>
+
+          <input
+            id="music-progress-slider"
+            className="music-progress-slider"
+            type="range"
+            min="0"
+            max={musicDurationSeconds > 0 ? musicDurationSeconds : 1}
+            step="0.1"
+            value={musicDurationSeconds > 0 ? musicElapsedSeconds : 0}
+            onChange={seekMusic}
+            disabled={musicDurationSeconds <= 0}
+            style={{ "--progress": `${musicProgressPercent}%` }}
+          />
+        </div>
+      </div>
+
       <div className="music-controls">
         <button type="button" className="btn" onClick={toggleMusicPlayback}>
           {isMusicPlaying ? "Tam dung" : "Phat nhac"}
         </button>
         <button type="button" className="btn" onClick={playNextTrack}>
           Bai tiep
+        </button>
+        <button
+          type="button"
+          className={`btn ${isSongUploadPanelOpen ? "primary" : ""}`}
+          onClick={() => {
+            setIsSongUploadPanelOpen((prev) => !prev);
+            setSongUploadMessage("");
+            setSongUploadError("");
+          }}
+        >
+          {isSongUploadPanelOpen ? "Dong upload" : "Upload"}
         </button>
       </div>
 
@@ -1587,8 +1877,73 @@ function App() {
         />
       </label>
 
+      {isSongUploadPanelOpen ? (
+        <div className="music-upload-box">
+          <p className="music-upload-title">Upload MP3 vao playlist</p>
+          <div className="music-upload-grid">
+            <input
+              type="text"
+              value={songTitleDraft}
+              maxLength={120}
+              onChange={(event) => setSongTitleDraft(event.target.value)}
+              placeholder="Ten bai hat"
+              disabled={isUploadingSong}
+            />
+            <input
+              type="file"
+              accept=".mp3,audio/mpeg"
+              onChange={handleSongFileSelected}
+              disabled={isUploadingSong}
+            />
+            <button
+              type="button"
+              className="btn"
+              onClick={handleUploadSong}
+              disabled={isUploadingSong || !songUploadFile || !visitorName}
+            >
+              {isUploadingSong ? "Dang upload" : "Upload MP3"}
+            </button>
+          </div>
+          <p className="music-upload-meta">
+            {songUploadFile
+              ? `File: ${songUploadFile.name}`
+              : "Chua chon file MP3"}
+          </p>
+          {songUploadMessage ? (
+            <p className="music-upload-feedback">{songUploadMessage}</p>
+          ) : null}
+          {songUploadError ? (
+            <p className="music-upload-feedback error">{songUploadError}</p>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="music-playlist-toolbar">
+        <p className="music-playlist-range">{musicRangeLabel}</p>
+        <div className="music-playlist-pagination">
+          <button
+            type="button"
+            className="music-page-btn"
+            onClick={() => setMusicPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentMusicPage <= 1}
+          >
+            Truoc
+          </button>
+          <button
+            type="button"
+            className="music-page-btn"
+            onClick={() =>
+              setMusicPage((prev) => Math.min(musicPageCount, prev + 1))
+            }
+            disabled={currentMusicPage >= musicPageCount}
+          >
+            Sau
+          </button>
+        </div>
+      </div>
+
       <ul className="music-playlist">
-        {birthdayPlaylist.map((track, index) => (
+        {pagedMusicTracks.map(({ track, index }) => (
           <li key={track.id}>
             <button
               type="button"
@@ -1605,7 +1960,10 @@ function App() {
       </ul>
 
       <p className={`music-note ${musicNotice ? "error" : ""}`}>
-        {musicNotice || "Playlist se tu dong qua bai tiep theo khi het nhac."}
+        {musicNotice ||
+          (isLoadingSongs
+            ? "Dang dong bo playlist tu server..."
+            : "Playlist se tu dong qua bai tiep theo khi het nhac.")}
       </p>
     </aside>
   ) : null;

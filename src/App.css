@@ -17,7 +17,11 @@
   border: 1px solid rgba(97, 73, 86, 0.24);
   border-radius: 18px;
   background:
-    radial-gradient(circle at 85% 12%, rgba(206, 224, 211, 0.36), transparent 46%),
+    radial-gradient(
+      circle at 85% 12%,
+      rgba(206, 224, 211, 0.36),
+      transparent 46%
+    ),
     linear-gradient(155deg, rgba(255, 251, 245, 0.93), rgba(248, 238, 231, 0.9));
   box-shadow: 0 14px 34px rgba(62, 40, 53, 0.18);
   backdrop-filter: blur(8px);
@@ -72,9 +76,127 @@
   font-size: 0.77rem;
 }
 
+.music-visual-wrap {
+  display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  align-items: center;
+  gap: 0.62rem;
+  padding: 0.1rem 0;
+}
+
+.music-disc {
+  width: 68px;
+  height: 68px;
+  border-radius: 999px;
+  border: 1px solid rgba(97, 73, 86, 0.28);
+  background:
+    radial-gradient(
+      circle at 28% 26%,
+      rgba(255, 255, 255, 0.52),
+      transparent 36%
+    ),
+    repeating-radial-gradient(
+      circle,
+      rgba(45, 36, 51, 0.86) 0,
+      rgba(45, 36, 51, 0.86) 4px,
+      rgba(24, 19, 29, 0.92) 4px,
+      rgba(24, 19, 29, 0.92) 8px
+    );
+  display: grid;
+  place-items: center;
+  box-shadow: inset 0 0 0 2px rgba(233, 223, 215, 0.22);
+}
+
+.music-disc.spinning {
+  animation: music-disc-spin 3.8s linear infinite;
+}
+
+.music-disc-center {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(233, 222, 232, 0.5);
+  background: linear-gradient(
+    145deg,
+    rgba(228, 192, 210, 0.95),
+    rgba(196, 214, 203, 0.95)
+  );
+  color: #413445;
+  font-size: 0.62rem;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.music-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.32rem;
+  min-width: 0;
+}
+
+.music-progress-clock {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.music-progress-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #625565;
+}
+
+.music-progress-slider {
+  --progress: 0%;
+  width: 100%;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 999px;
+  height: 8px;
+  background: linear-gradient(
+    90deg,
+    #cf9eb6 0%,
+    #bfd2c5 var(--progress),
+    rgba(136, 109, 124, 0.24) var(--progress),
+    rgba(136, 109, 124, 0.24) 100%
+  );
+}
+
+.music-progress-slider:disabled {
+  opacity: 0.52;
+}
+
+.music-progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(82, 57, 74, 0.38);
+  background: #fff;
+  cursor: pointer;
+}
+
+.music-progress-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(82, 57, 74, 0.38);
+  background: #fff;
+  cursor: pointer;
+}
+
 .music-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.44rem;
 }
 
@@ -101,6 +223,69 @@
   width: 100%;
 }
 
+.music-upload-box {
+  border: 1px solid rgba(97, 73, 86, 0.16);
+  border-radius: 12px;
+  padding: 0.52rem;
+  background: rgba(255, 255, 255, 0.68);
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  animation: fade-in 220ms ease;
+}
+
+.music-upload-title {
+  margin: 0;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #55495b;
+}
+
+.music-upload-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.38rem;
+}
+
+.music-upload-grid input[type="text"],
+.music-upload-grid input[type="file"] {
+  width: 100%;
+  border: 1px solid rgba(97, 73, 86, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.5rem;
+}
+
+.music-upload-grid input[type="file"] {
+  padding: 0.24rem;
+}
+
+.music-upload-grid .btn {
+  width: 100%;
+  padding: 0.42rem 0.58rem;
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+
+.music-upload-meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.music-upload-feedback {
+  margin: 0;
+  font-size: 0.73rem;
+  color: #2f6a4d;
+}
+
+.music-upload-feedback.error {
+  color: #a43a54;
+}
+
 .music-playlist {
   margin: 0;
   padding: 0;
@@ -110,6 +295,42 @@
   gap: 0.36rem;
   max-height: 146px;
   overflow-y: auto;
+}
+
+.music-playlist-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.music-playlist-range {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+}
+
+.music-playlist-pagination {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.music-page-btn {
+  border: 1px solid rgba(97, 73, 86, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.18rem 0.45rem;
+  cursor: pointer;
+}
+
+.music-page-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
 }
 
 .music-track-btn {
@@ -184,8 +405,16 @@
   border-radius: 28px;
   padding: 2rem clamp(1rem, 3vw, 2rem);
   background:
-    radial-gradient(circle at 15% 10%, rgba(255, 220, 188, 0.45), transparent 34%),
-    radial-gradient(circle at 88% 82%, rgba(199, 214, 203, 0.52), transparent 30%),
+    radial-gradient(
+      circle at 15% 10%,
+      rgba(255, 220, 188, 0.45),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 88% 82%,
+      rgba(199, 214, 203, 0.52),
+      transparent 30%
+    ),
     rgba(255, 255, 255, 0.86);
   box-shadow: 0 20px 45px rgba(58, 37, 51, 0.12);
 }
@@ -240,7 +469,9 @@
   align-items: center;
   gap: 0.55rem;
   cursor: pointer;
-  transition: transform 240ms ease, box-shadow 240ms ease;
+  transition:
+    transform 240ms ease,
+    box-shadow 240ms ease;
 }
 
 .gift-trigger:hover {
@@ -289,7 +520,11 @@
   padding: 2.6rem clamp(1.2rem, 3vw, 3rem);
   text-align: center;
   background:
-    radial-gradient(circle at 85% 15%, rgba(238, 205, 178, 0.5), transparent 46%),
+    radial-gradient(
+      circle at 85% 15%,
+      rgba(238, 205, 178, 0.5),
+      transparent 46%
+    ),
     linear-gradient(145deg, rgba(255, 255, 255, 0.88), rgba(247, 241, 235, 0.8));
   box-shadow: 0 20px 45px rgba(58, 37, 51, 0.12);
   animation: rise-in 720ms ease both;
@@ -351,14 +586,22 @@
 }
 
 .fire-zone::before {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   border-radius: 24px;
   pointer-events: none;
   background:
-    radial-gradient(circle at 82% 15%, rgba(176, 145, 202, 0.16), transparent 40%),
-    radial-gradient(circle at 15% 85%, rgba(130, 184, 160, 0.16), transparent 45%);
+    radial-gradient(
+      circle at 82% 15%,
+      rgba(176, 145, 202, 0.16),
+      transparent 40%
+    ),
+    radial-gradient(
+      circle at 15% 85%,
+      rgba(130, 184, 160, 0.16),
+      transparent 45%
+    );
 }
 
 .button-row {
@@ -377,7 +620,9 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 220ms ease, background-color 220ms ease;
+  transition:
+    transform 220ms ease,
+    background-color 220ms ease;
 }
 
 .btn:hover {
@@ -529,8 +774,16 @@
   animation-delay: 40ms;
   border-color: rgba(97, 73, 86, 0.2);
   background:
-    radial-gradient(circle at 92% 6%, rgba(212, 185, 200, 0.2), transparent 34%),
-    radial-gradient(circle at 8% 96%, rgba(188, 211, 199, 0.2), transparent 30%),
+    radial-gradient(
+      circle at 92% 6%,
+      rgba(212, 185, 200, 0.2),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 8% 96%,
+      rgba(188, 211, 199, 0.2),
+      transparent 30%
+    ),
     rgba(255, 255, 255, 0.84);
 }
 
@@ -581,7 +834,9 @@
   cursor: pointer;
   font: inherit;
   font-size: 0.86rem;
-  transition: transform 180ms ease, background-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease;
 }
 
 .reaction-btn:hover {
@@ -633,8 +888,11 @@
 .wish-module {
   border: 1px solid rgba(97, 73, 86, 0.16);
   border-radius: 16px;
-  background:
-    linear-gradient(165deg, rgba(255, 255, 255, 0.78), rgba(250, 245, 238, 0.66));
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.78),
+    rgba(250, 245, 238, 0.66)
+  );
   box-shadow: 0 8px 20px rgba(73, 47, 60, 0.06);
   padding: 0.7rem;
   height: 100%;
@@ -698,7 +956,10 @@
   font-size: 0.82rem;
   padding: 0.4rem 0.78rem;
   cursor: pointer;
-  transition: transform 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .wish-chip:hover {
@@ -708,7 +969,11 @@
 }
 
 .wish-chip.random {
-  background: linear-gradient(140deg, rgba(232, 243, 231, 0.95), rgba(211, 231, 216, 0.95));
+  background: linear-gradient(
+    140deg,
+    rgba(232, 243, 231, 0.95),
+    rgba(211, 231, 216, 0.95)
+  );
   border-color: rgba(79, 125, 92, 0.38);
   color: #2f5b3f;
   font-weight: 700;
@@ -853,7 +1118,9 @@
   border-radius: 14px;
   padding: 0.72rem 0.82rem;
   background: rgba(255, 255, 255, 0.75);
-  transition: transform 160ms ease, box-shadow 160ms ease;
+  transition:
+    transform 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .wish-item:hover {
@@ -910,8 +1177,11 @@
 .wish-credits {
   border: 1px solid rgba(97, 73, 86, 0.14);
   border-radius: 16px;
-  background:
-    linear-gradient(180deg, rgba(253, 247, 241, 0.86), rgba(245, 239, 232, 0.9));
+  background: linear-gradient(
+    180deg,
+    rgba(253, 247, 241, 0.86),
+    rgba(245, 239, 232, 0.9)
+  );
   padding: 0.62rem;
   width: min(100%, 250px);
   justify-self: end;
@@ -1009,36 +1279,36 @@
   text-align: center;
   color: var(--text-soft);
 
-@media (max-width: 1180px) {
-  .wish-board-layout {
-    --wish-column-height: clamp(380px, 49vh, 460px);
-    grid-template-columns: minmax(0, 1fr) minmax(190px, 210px);
-    gap: 0.62rem;
-  }
+  @media (max-width: 1180px) {
+    .wish-board-layout {
+      --wish-column-height: clamp(380px, 49vh, 460px);
+      grid-template-columns: minmax(0, 1fr) minmax(190px, 210px);
+      gap: 0.62rem;
+    }
 
-  .wish-system-grid {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
+    .wish-system-grid {
+      grid-template-columns: 1fr;
+      height: auto;
+    }
 
-  .wish-module {
-    height: auto;
-  }
+    .wish-module {
+      height: auto;
+    }
 
-  .wish-compose-module {
-    overflow: visible;
-  }
+    .wish-compose-module {
+      overflow: visible;
+    }
 
-  .wish-list {
-    max-height: 280px;
-    flex: none;
-  }
+    .wish-list {
+      max-height: 280px;
+      flex: none;
+    }
 
-  .wish-credits {
-    width: min(100%, 210px);
-    height: var(--wish-column-height);
+    .wish-credits {
+      width: min(100%, 210px);
+      height: var(--wish-column-height);
+    }
   }
-}
   font-size: 0.9rem;
 }
 
@@ -1218,7 +1488,9 @@
   font-weight: 600;
   padding: 0.38rem 0.72rem;
   cursor: pointer;
-  transition: transform 180ms ease, background-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease;
 }
 
 .media-filter-btn:hover {
@@ -1419,7 +1691,11 @@
   justify-content: center;
   text-align: center;
   background:
-    linear-gradient(160deg, rgba(209, 186, 200, 0.35), rgba(181, 203, 190, 0.3)),
+    linear-gradient(
+      160deg,
+      rgba(209, 186, 200, 0.35),
+      rgba(181, 203, 190, 0.3)
+    ),
     #f8f5ef;
 }
 
@@ -1489,7 +1765,9 @@
   background: rgba(30, 21, 36, 0.74);
   color: #f7eef8;
   cursor: pointer;
-  transition: transform 180ms ease, background-color 180ms ease;
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease;
 }
 
 .lightbox-close:hover,
@@ -1547,6 +1825,15 @@
   }
 }
 
+@keyframes music-disc-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -1581,6 +1868,30 @@
     bottom: 0.5rem;
     left: 0.5rem;
     width: auto;
+  }
+
+  .music-visual-wrap {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 0.5rem;
+  }
+
+  .music-disc {
+    width: 54px;
+    height: 54px;
+  }
+
+  .music-disc-center {
+    width: 22px;
+    height: 22px;
+    font-size: 0.56rem;
+  }
+
+  .music-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .music-controls .btn:last-child {
+    grid-column: span 2;
   }
 
   .wish-grid {
